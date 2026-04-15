@@ -1,0 +1,42 @@
+:root {
+  --bg:       #07090f;
+  --surface:  #0d1120;
+  --surface2: #131929;
+  --border:   rgba(120,160,255,0.1);
+  --accent:   #e8d5a3;
+  --accent2:  #c084fc;
+  --accent3:  #fb923c;
+  --green:    #4ade80;
+  --text:     #d4dae8;
+  --muted:    #4a5568;
+  --red:      #f87171;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'DM Mono', monospace;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.012) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.012) 1px, transparent 1px);
+  background-size: 48px 48px;
+  pointer-events: none; z-index: 0;
+}
+
+#root { display: flex; flex-direction: column; height: 100vh; }
+
+@keyframes spin    { to { transform: rotate(360deg); } }
+@keyframes fadeIn  { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes blink   { 0%,100%{opacity:0.4} 50%{opacity:1} }
+@keyframes pulse   { 0%,100%{opacity:0.6} 50%{opacity:1} }
