@@ -1,6 +1,6 @@
-# Six Degrees — Teoria dos 6 Graus entre Atores
+# Six Degrees - Teoria dos 6 Graus entre Atores
 
-Descubra como dois atores se conectam através de filmes em comum.
+Descubra como dois atores se conectam por filmes e series em comum.
 
 ## Como rodar localmente
 
@@ -32,13 +32,17 @@ npm run dev
 docker-compose up --build
 ```
 
-Acesse: http://localhost
+Acesse `http://localhost`.
 
-## Deploy
+## Deploy no Render
 
-Veja `DEPLOY_RENDER.md`.
+Use o painel web do Render:
+
+- Backend: `Web Service` apontando para `backend/`
+- Frontend: `Static Site` apontando para `frontend/`
+- Configure as env vars necessarias no backend e `VITE_API_BASE` no frontend
 
 ## APIs utilizadas
 
-- TMDB — dados de atores e filmes
-- Groq (llama-3.3-70b) — curiosidades sobre as conexões
+- TMDB - dados de atores, filmes e series
+- Groq (`llama-3.3-70b`) - curiosidades sobre as conexoes
