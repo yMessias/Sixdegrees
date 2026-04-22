@@ -1,6 +1,7 @@
 import { startTransition, useEffect, useRef, useState } from 'react'
 import SearchForm from '../components/SearchForm'
 import PathGraph from '../components/PathGraph'
+import cinemaWallpaper from '../assets/theend.jfif'
 import {
   cancelConnectionJob,
   getConnectionJob,
@@ -11,15 +12,23 @@ import './Home.css'
 
 const POLL_INTERVAL_MS = 1200
 
+const APP_CONFIG = {
+  logo: ['Six', 'Degrees'],
+  loading: 'Buscando conexao completa...',
+  queued: 'Iniciando busca profunda...',
+  pairSeparator: '->',
+  maxDegrees: 6,
+  wallpaper: cinemaWallpaper,
+}
+
 function Home() {
-  const [state, setState] = useState('idle')  // idle | loading | result | error
+  const [state, setState] = useState('idle')
   const [result, setResult] = useState(null)
   const [insights, setInsights] = useState(null)
   const [error, setError] = useState(null)
   const [degrees, setDegrees] = useState(null)
   const [searchMs, setSearchMs] = useState(null)
-  const [insightState, setInsightState] = useState('idle') // idle | loading | ready | error
-  const [showInsights, setShowInsights] = useState(false)
+  const [insightState, setInsightState] = useState('idle')
   const [selection, setSelection] = useState(null)
   const [progress, setProgress] = useState(null)
   const [loadingMs, setLoadingMs] = useState(0)
@@ -43,7 +52,6 @@ function Home() {
     setDegrees(null)
     setSearchMs(null)
     setInsightState('idle')
-    setShowInsights(false)
     setSelection({ actorA, actorB })
     setProgress({
       stage: 'queued',
@@ -52,7 +60,7 @@ function Home() {
       frontier_size: 0,
       frontier_sample: [],
       history: [],
-      message: 'Iniciando busca profunda...',
+      message: APP_CONFIG.queued,
     })
 
     try {
@@ -113,13 +121,13 @@ function Home() {
       }
 
       if (job.status === 'not_found') {
-        setError(job.progress?.message || 'Conexao nao encontrada em ate 6 graus.')
+        setError(job.progress?.message || 'Conexao nao encontrada.')
         setState('error')
         return
       }
 
       if (job.status === 'timeout') {
-        setError(job.error || job.progress?.message || 'A busca profunda excedeu o tempo permitido.')
+        setError(job.error || job.progress?.message || 'A busca excedeu o tempo permitido.')
         setState('error')
         return
       }
@@ -153,20 +161,9 @@ function Home() {
     setDegrees(null)
     setSearchMs(null)
     setInsightState('idle')
-    setShowInsights(false)
     setSelection(null)
     setProgress(null)
     setLoadingMs(0)
-  }
-
-  function openInsights() {
-    setShowInsights(true)
-    window.requestAnimationFrame(() => {
-      document.getElementById('graph-insights')?.scrollIntoView({
-        behavior: 'smooth',
-        block: 'start',
-      })
-    })
   }
 
   useEffect(() => {
@@ -188,36 +185,27 @@ function Home() {
   }, [])
 
   return (
-    <div className="home">
+    <div
+      className={`home home-state-${state}`}
+      style={{ '--mode-wallpaper': `url(${APP_CONFIG.wallpaper})` }}
+    >
       <header className="home-header">
         <div className="home-logo">
-          Six<span>Degrees</span>
+          {APP_CONFIG.logo[0]}<span>{APP_CONFIG.logo[1]}</span>
         </div>
-        <div className="home-tagline">teoria dos 6 graus · cinema</div>
 
         {state === 'result' && (
           <div className="home-header-right">
             <div className="home-degrees">
               <span className="home-degrees-num">{degrees}</span>
               <span className="home-degrees-label">
-                {degrees === 1 ? 'grau' : 'graus'} de separação
+                {degrees === 1 ? 'grau' : 'graus'} de separacao
               </span>
             </div>
             <div className="home-meta-pills">
               {searchMs !== null && (
                 <span className="home-pill">
                   busca {formatElapsed(searchMs)}
-                </span>
-              )}
-              {insightState === 'ready' ? (
-                <button className="home-pill home-pill-button ready" onClick={openInsights}>
-                  curiosidades prontas
-                </button>
-              ) : (
-                <span className={`home-pill ${insightState}`}>
-                  {insightState === 'loading' && 'IA lapidando curiosidades'}
-                  {insightState === 'error' && 'grafo pronto, IA indisponível'}
-                  {insightState === 'idle' && 'resultado carregado'}
                 </span>
               )}
             </div>
@@ -231,60 +219,21 @@ function Home() {
       {state === 'loading' && (
         <div className="home-loading home-loading-deep">
           <div className="home-ring" />
-          <div className="home-loading-label">Buscando conexão completa...</div>
+          <div className="home-loading-label">{APP_CONFIG.loading}</div>
           {selection && (
             <div className="home-loading-subtitle">
-              {selection.actorA.name} ↔ {selection.actorB.name}
+              {selection.actorA.name} {APP_CONFIG.pairSeparator} {selection.actorB.name}
             </div>
           )}
 
-          <div className="home-progress-stats">
-            <div className="home-progress-pill">
-              tempo {formatElapsed(loadingMs)}
-            </div>
-            <div className="home-progress-pill">
-              camada {Math.min((progress?.depth ?? 0) + 1, 6)} / 6
-            </div>
-            <div className="home-progress-pill">
-              atores vistos {progress?.explored_actors ?? 0}
-            </div>
-            <div className="home-progress-pill">
-              fronteira {progress?.frontier_size ?? 0}
-            </div>
+          <div className="home-loading-status">
+            <span>{formatElapsed(loadingMs)}</span>
+            <span>grau {Math.min((progress?.depth ?? 0) + 1, APP_CONFIG.maxDegrees)} de {APP_CONFIG.maxDegrees}</span>
           </div>
 
-          <div className="home-progress-card">
-            <div className="home-progress-title">
-              {progress?.message || 'Explorando filmografias e elencos...'}
-            </div>
-            {progress?.frontier_sample?.length > 0 && (
-              <div className="home-progress-sample">
-                {progress.frontier_sample.map(name => (
-                  <span key={name} className="home-progress-chip">{name}</span>
-                ))}
-              </div>
-            )}
+          <div className="home-progress-line">
+            {progress?.message || 'Explorando conexoes...'}
           </div>
-
-          {progress?.history?.length > 0 && (
-            <div className="home-progress-timeline">
-              {progress.history.map(item => (
-                <div key={`${item.depth}-${item.label}`} className="home-progress-step">
-                  <div className="home-progress-step-top">
-                    <span className="home-progress-step-depth">{item.label}</span>
-                    <span className="home-progress-step-count">
-                      +{item.discovered_count} atores
-                    </span>
-                  </div>
-                  {item.sample_names?.length > 0 && (
-                    <div className="home-progress-step-sample">
-                      {item.sample_names.join(' · ')}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
 
           <button className="home-back-btn" onClick={reset}>Cancelar busca</button>
         </div>
@@ -308,7 +257,6 @@ function Home() {
           path={result}
           insights={insights}
           insightState={insightState}
-          showInsights={showInsights}
           selection={selection}
         />
       )}

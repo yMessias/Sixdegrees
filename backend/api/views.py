@@ -55,6 +55,11 @@ def find_connection(request):
             {'error': 'Essa conexão demorou demais para o modo rápido. Tente outro par de atores.'},
             status=status.HTTP_504_GATEWAY_TIMEOUT,
         )
+    except requests.RequestException:
+        return Response(
+            {'error': 'O TMDb demorou para responder. Tente novamente em instantes.'},
+            status=status.HTTP_504_GATEWAY_TIMEOUT,
+        )
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 

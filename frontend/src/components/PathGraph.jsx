@@ -1,20 +1,25 @@
 import { useEffect, useRef, useState } from 'react'
 import './PathGraph.css'
 
-const NODE_R    = 56
-const H_PADDING = 140
+const BASE_NODE_R = 52
+const MIN_NODE_R = 28
+const DESKTOP_ZIGZAG_OFFSET = 105
 
-function PathGraph({ path, insights, insightState, showInsights, selection }) {
+function PathGraph({ path, insights, insightState, selection }) {
   const wrapRef = useRef(null)
-  const [dims, setDims]         = useState({ w: 800, h: 500 })
-  const [tip, setTip]           = useState(null)
+  const stageRef = useRef(null)
+  const [dims, setDims] = useState({ w: 800, h: 500 })
+  const [tip, setTip] = useState(null)
   const [activeEdge, setActiveEdge] = useState(null)
 
   useEffect(() => {
     function update() {
-      if (wrapRef.current)
-        setDims({ w: wrapRef.current.clientWidth, h: wrapRef.current.clientHeight })
+      const el = stageRef.current || wrapRef.current
+      if (el) {
+        setDims({ w: el.clientWidth, h: el.clientHeight })
+      }
     }
+
     update()
     window.addEventListener('resize', update)
     return () => window.removeEventListener('resize', update)
@@ -28,46 +33,50 @@ function PathGraph({ path, insights, insightState, showInsights, selection }) {
   if (!path || path.length === 0) return null
 
   const actors = path.map(step => step.actor)
-  const edges  = path.slice(0, -1).map((step, i) => ({
-    movie:   step.movie,
+  const edges = path.slice(0, -1).map((step, i) => ({
+    movie: step.movie,
     fromIdx: i,
-    toIdx:   i + 1,
+    toIdx: i + 1,
   }))
-  const bridgeActors = actors.slice(1, -1)
-  const insightCards = edges.map((edge, i) => ({
-    id: `${actors[edge.fromIdx].id}:${edge.movie?.id}:${actors[edge.toIdx].id}`,
-    index: i,
-    movie: edge.movie,
-    actorLeft: actors[edge.fromIdx],
-    actorRight: actors[edge.toIdx],
-    insight: edge.movie ? getInsight(edge) : null,
-  }))
-
   const total = actors.length
-  const isCompact = dims.w < 980 || total > 4
+  const isCompact = dims.w < 760
+  const availableW = Math.max(dims.w, 420)
+  const sidePadding = isCompact ? 0 : clamp(availableW * 0.055, 72, 132)
+  const desktopSpacing = total > 1 ? (availableW - sidePadding * 2) / (total - 1) : 0
+  const fitScale = isCompact ? 1 : clamp(desktopSpacing / 360, 0.56, 1)
+  const nodeR = isCompact
+    ? BASE_NODE_R
+    : Math.round(clamp(desktopSpacing * 0.15, MIN_NODE_R, BASE_NODE_R))
+  const posterPad = Math.max(6, Math.round(10 * fitScale))
+  const posterW = Math.max(34, Math.round(62 * fitScale))
+  const posterH = Math.max(46, Math.round(84 * fitScale))
+  const posterGap = Math.max(10, Math.round(16 * fitScale))
+  const titleX = posterPad + posterW + posterGap
+  const stageHeight = Math.max(380, dims.h - 128)
   const canvas = {
-    w: Math.max(dims.w, 420),
-    h: isCompact ? Math.max(dims.h, 220 + (total - 1) * 170) : dims.h,
+    w: availableW,
+    h: isCompact ? Math.max(stageHeight, 230 + (total - 1) * 186) : Math.max(stageHeight, 460),
   }
 
   const positions = isCompact
     ? actors.map((_, i) => {
-        const offset = Math.min(92, canvas.w * 0.16)
+        const offset = Math.min(104, canvas.w * 0.16)
         const x =
           i === 0 || i === total - 1
             ? canvas.w / 2
             : canvas.w / 2 + (i % 2 === 0 ? -offset : offset)
         return {
           x,
-          y: 110 + i * 170,
+          y: 126 + i * 186,
         }
       })
     : actors.map((_, i) => {
-        const usableW = canvas.w - H_PADDING * 2
+        const usableW = canvas.w - sidePadding * 2
         const spacing = total > 1 ? usableW / (total - 1) : 0
+        const offset = total <= 2 ? 0 : Math.min(DESKTOP_ZIGZAG_OFFSET, canvas.h * 0.22)
         return {
-          x: H_PADDING + i * spacing,
-          y: canvas.h / 2,
+          x: total === 1 ? canvas.w / 2 : sidePadding + i * spacing,
+          y: total === 1 ? canvas.h / 2 : canvas.h / 2 + (i % 2 === 0 ? -offset : offset),
         }
       })
 
@@ -77,224 +86,236 @@ function PathGraph({ path, insights, insightState, showInsights, selection }) {
     return insights.insights.find(ins => ins.connection_key === key)
   }
 
+  function edgePath(a, b, index) {
+    const mx = (a.x + b.x) / 2
+    const my = (a.y + b.y) / 2
+    const bend = edgeBend(index)
+
+    return `M ${a.x} ${a.y} Q ${mx} ${my + bend} ${b.x} ${b.y}`
+  }
+
+  function edgeBend(index) {
+    if (total <= 2) return -38
+    if (isCompact) return index % 2 === 0 ? -48 : 48
+    return index % 2 === 0 ? 58 : -58
+  }
+
+  function edgeLabel(movie) {
+    if (!movie) return 'Conexao'
+    const title = movie.title || 'Conexao'
+    return movie.year ? `${title} (${movie.year})` : title
+  }
+
+  function mediaTypeLabel(movie) {
+    return movie?.type === 'tv' ? 'serie' : 'filme'
+  }
+
+  function showEdgeTip(ev, edge, insight) {
+    setActiveEdge(edge.index)
+    if (!edge.movie || !wrapRef.current) return
+
+    const rect = wrapRef.current.getBoundingClientRect()
+    setTip({
+      x: ev.clientX - rect.left,
+      y: ev.clientY - rect.top,
+      movie: edge.movie,
+      actorLeft: actors[edge.fromIdx].name,
+      actorRight: actors[edge.toIdx].name,
+      insight: insight?.curiosity || null,
+    })
+  }
+
+  function moveTip(ev) {
+    if (tip && wrapRef.current) {
+      const rect = wrapRef.current.getBoundingClientRect()
+      setTip(t => ({ ...t, x: ev.clientX - rect.left, y: ev.clientY - rect.top }))
+    }
+  }
+
+  const edgeVisuals = edges.map((edge, i) => {
+    const a = positions[edge.fromIdx]
+    const b = positions[edge.toIdx]
+    const mx = (a.x + b.x) / 2
+    const my = (a.y + b.y) / 2
+    const bend = edgeBend(i)
+    const label = edgeLabel(edge.movie)
+    const hasPoster = Boolean(edge.movie?.poster)
+    const cardMax = isCompact
+      ? 390
+      : Math.max(108, desktopSpacing - nodeR * 1.8)
+    const cardMin = hasPoster
+      ? Math.min(cardMax, Math.max(112, 190 * fitScale))
+      : Math.min(cardMax, 130)
+    const desiredCardWidth = hasPoster
+      ? titleX + Math.min(210, label.length * 7) + 14
+      : label.length * 7 + 32
+    const cardWidth = Math.round(clamp(desiredCardWidth, cardMin, cardMax))
+    const cardHeight = hasPoster ? posterH + posterPad * 2 : 50
+    const labelX = clamp(mx, cardWidth / 2 + 8, canvas.w - cardWidth / 2 - 8)
+    const labelY = clamp(my + bend / 2, cardHeight / 2 + 10, canvas.h - cardHeight / 2 - 10)
+    const ins = edge.movie ? getInsight(edge) : null
+
+    return {
+      edge,
+      index: i,
+      pathD: edgePath(a, b, i),
+      isActive: activeEdge === i,
+      label,
+      mediaType: mediaTypeLabel(edge.movie),
+      hasPoster,
+      cardWidth,
+      cardHeight,
+      labelX,
+      labelY,
+      ins,
+      edgeWithIndex: { ...edge, index: i },
+    }
+  })
+
   return (
     <div className="graph-wrap" ref={wrapRef}>
       <div className="graph-header">
-        <div>
-          <div className="graph-kicker">menor cadeia encontrada</div>
-          <h2 className="graph-title">
-            {selection?.actorA?.name || actors[0]?.name}
-            <span> {' -> '} </span>
-            {selection?.actorB?.name || actors[actors.length - 1]?.name}
-          </h2>
-          <p className="graph-lede">
-            {bridgeActors.length === 0
-              ? 'Os dois atores dividiram a mesma obra.'
-              : bridgeActors.length === 1
-                ? `${bridgeActors[0].name} conecta os dois nomes.`
-                : `${bridgeActors.map(actor => actor.name).join(' -> ')} conecta os dois nomes.`}
-          </p>
+        <h2 className="graph-title">
+          {selection?.actorA?.name || actors[0]?.name}
+          <span> {' -> '} </span>
+          {selection?.actorB?.name || actors[actors.length - 1]?.name}
+        </h2>
+      </div>
+
+      <div className="graph-stage" ref={stageRef}>
+        <svg
+          className="graph-svg"
+          width={canvas.w}
+          height={canvas.h}
+          viewBox={`0 0 ${canvas.w} ${canvas.h}`}
+        >
+          <defs>
+            {actors.map((_, i) => (
+              <clipPath key={`clip-${i}`} id={`clip-${i}`}>
+                <circle cx={positions[i].x} cy={positions[i].y} r={nodeR - 2} />
+              </clipPath>
+            ))}
+          </defs>
+
+          {edgeVisuals.map(visual => (
+              <g key={`edge-${visual.index}`}>
+                <path
+                  d={visual.pathD}
+                  fill="none"
+                  className={`graph-edge ${visual.isActive ? 'active' : ''}`}
+                />
+
+                <path
+                  d={visual.pathD}
+                  stroke="transparent"
+                  strokeWidth={58}
+                  fill="none"
+                  style={{ cursor: 'pointer', pointerEvents: 'stroke' }}
+                  onMouseEnter={ev => showEdgeTip(ev, visual.edgeWithIndex, visual.ins)}
+                  onClick={ev => showEdgeTip(ev, visual.edgeWithIndex, visual.ins)}
+                  onMouseMove={moveTip}
+                  onMouseLeave={() => { setActiveEdge(null); setTip(null) }}
+                />
+              </g>
+          ))}
+
+          {actors.map((actor, i) => {
+            const { x, y } = positions[i]
+            const isFirst = i === 0
+            const isLast = i === actors.length - 1
+
+            return (
+              <g key={`actor-${i}`} className="graph-actor-group">
+                <circle cx={x} cy={y} r={nodeR + 7}
+                  className={`graph-ring ${isFirst ? 'first' : isLast ? 'last' : ''}`}
+                />
+                <circle cx={x} cy={y} r={nodeR} className="graph-circle" />
+
+                {actor.photo ? (
+                  <image
+                    href={actor.photo}
+                    x={x - nodeR} y={y - nodeR}
+                    width={nodeR * 2} height={nodeR * 2}
+                    clipPath={`url(#clip-${i})`}
+                    preserveAspectRatio="xMidYMid slice"
+                  />
+                ) : (
+                  <text x={x} y={y} textAnchor="middle"
+                    dominantBaseline="middle" className="graph-avatar-placeholder">?</text>
+                )}
+
+                {(isFirst || isLast) && (
+                  <text x={x} y={y - nodeR - 16} textAnchor="middle"
+                    className={`graph-badge-top ${isFirst ? 'first' : 'last'}`}>
+                    {isFirst ? 'origem' : 'destino'}
+                  </text>
+                )}
+
+                <text x={x} y={y + nodeR + 24} textAnchor="middle"
+                  className="graph-actor-label">
+                  {actor.name}
+                </text>
+              </g>
+            )
+          })}
+        </svg>
+
+        <div
+          className="graph-edge-cards"
+          style={{ width: canvas.w, height: canvas.h }}
+        >
+          {edgeVisuals.filter(visual => visual.edge.movie).map(visual => (
+            <button
+              type="button"
+              key={`edge-card-${visual.index}`}
+              className={`graph-edge-card ${visual.isActive ? 'active' : ''}`}
+              style={{
+                left: visual.labelX,
+                top: visual.labelY,
+                width: visual.cardWidth,
+                minHeight: visual.cardHeight,
+                '--poster-w': `${posterW}px`,
+                '--poster-h': `${posterH}px`,
+                '--poster-pad': `${posterPad}px`,
+              }}
+              aria-label={`Ver curiosidade sobre ${visual.label}`}
+              onMouseEnter={ev => showEdgeTip(ev, visual.edgeWithIndex, visual.ins)}
+              onMouseMove={moveTip}
+              onMouseLeave={() => { setActiveEdge(null); setTip(null) }}
+              onFocus={ev => {
+                const rect = ev.currentTarget.getBoundingClientRect()
+                showEdgeTip(
+                  { clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2 },
+                  visual.edgeWithIndex,
+                  visual.ins,
+                )
+              }}
+              onBlur={() => { setActiveEdge(null); setTip(null) }}
+              onClick={ev => showEdgeTip(ev, visual.edgeWithIndex, visual.ins)}
+            >
+              {visual.hasPoster && (
+                <img
+                  src={visual.edge.movie.poster}
+                  alt={visual.edge.movie.title}
+                  className="graph-edge-card-poster"
+                  draggable="false"
+                />
+              )}
+              <span className="graph-edge-card-copy">
+                <span className="graph-edge-card-title">{visual.label}</span>
+                <span className="graph-edge-card-kind">{visual.mediaType}</span>
+              </span>
+            </button>
+          ))}
         </div>
       </div>
 
-      {showInsights && (
-        <section id="graph-insights" className="graph-insights-panel">
-          <div className="graph-insights-header">
-            <div>
-              <div className="graph-kicker">curiosidades da cadeia</div>
-              <h3 className="graph-insights-title">Cada conexão, com contexto</h3>
-            </div>
-          </div>
-
-          <div className="graph-insights-grid">
-            {insightCards.map(card => (
-              <article key={card.id} className="graph-insight-card">
-                <div className="graph-insight-topline">
-                  <span className="graph-summary-index">{card.index + 1}</span>
-                  <div className="graph-insight-movie">
-                    {card.movie?.title || 'Conexão encontrada'}
-                    {card.movie?.year ? ` (${card.movie.year})` : ''}
-                  </div>
-                </div>
-
-                <div className="graph-insight-pair">
-                  {card.actorLeft.name} · {card.actorRight.name}
-                </div>
-
-                {card.insight?.curiosity ? (
-                  <p className="graph-insight-text">{card.insight.curiosity}</p>
-                ) : insightState === 'error' ? (
-                  <p className="graph-insight-text muted">
-                    O grafo foi montado, mas essa curiosidade não voltou agora.
-                  </p>
-                ) : (
-                  <p className="graph-insight-text muted">
-                    A IA ainda está montando essa curiosidade.
-                  </p>
-                )}
-              </article>
-            ))}
-          </div>
-        </section>
-      )}
-
-      <svg
-        className="graph-svg"
-        width={canvas.w}
-        height={canvas.h}
-        viewBox={`0 0 ${canvas.w} ${canvas.h}`}
-      >
-        <defs>
-          {actors.map((_, i) => (
-            <clipPath key={`clip-${i}`} id={`clip-${i}`}>
-              <circle cx={positions[i].x} cy={positions[i].y} r={NODE_R - 2} />
-            </clipPath>
-          ))}
-          <filter id="glow">
-            <feGaussianBlur stdDeviation="4" result="blur" />
-            <feMerge>
-              <feMergeNode in="blur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
-        </defs>
-
-        {/* Arestas */}
-        {edges.map((edge, i) => {
-          const a  = positions[edge.fromIdx]
-          const b  = positions[edge.toIdx]
-          const mx = (a.x + b.x) / 2
-          const my = (a.y + b.y) / 2
-          const isActive = activeEdge === i
-
-          const ins = edge.movie ? getInsight(edge) : null
-
-          return (
-            <g key={`edge-${i}`}>
-              <line
-                x1={a.x} y1={a.y} x2={b.x} y2={b.y}
-                className={`graph-edge ${isActive ? 'active' : ''}`}
-              />
-
-              {/* Área invisível de hover */}
-              <line
-                x1={a.x} y1={a.y} x2={b.x} y2={b.y}
-                stroke="transparent" strokeWidth={40}
-                style={{ cursor: 'pointer', pointerEvents: 'stroke' }}
-                onMouseEnter={ev => {
-                  setActiveEdge(i)
-                  if (edge.movie) {
-                    const rect = wrapRef.current.getBoundingClientRect()
-                    setTip({
-                      x:          ev.clientX - rect.left,
-                      y:          ev.clientY - rect.top,
-                      movie:      edge.movie,
-                      actorLeft:  actors[edge.fromIdx].name,
-                      actorRight: actors[edge.toIdx].name,
-                      insight:    ins?.curiosity || null,
-                    })
-                  }
-                }}
-                onMouseMove={ev => {
-                  if (tip) {
-                    const rect = wrapRef.current.getBoundingClientRect()
-                    setTip(t => ({ ...t, x: ev.clientX - rect.left, y: ev.clientY - rect.top }))
-                  }
-                }}
-                onMouseLeave={() => { setActiveEdge(null); setTip(null) }}
-              />
-
-              {/* Poster no meio da aresta */}
-              {edge.movie?.poster && (
-                <>
-                  <clipPath id={`edge-clip-${i}`}>
-                    <rect x={mx - 22} y={my - 32} width={44} height={60} rx={6} />
-                  </clipPath>
-                  <image
-                    href={edge.movie.poster}
-                    x={mx - 22} y={my - 32}
-                    width={44} height={60}
-                    clipPath={`url(#edge-clip-${i})`}
-                    preserveAspectRatio="xMidYMid slice"
-                    className={`graph-poster ${isActive ? 'active' : ''}`}
-                    style={{ pointerEvents: 'none' }}
-                  />
-                  <rect
-                    x={mx - 22} y={my - 32} width={44} height={60} rx={6}
-                    fill="none"
-                    stroke={isActive ? 'rgba(251,146,60,0.9)' : 'rgba(251,146,60,0.3)'}
-                    strokeWidth={1.5}
-                    style={{ pointerEvents: 'none' }}
-                  />
-                </>
-              )}
-
-              {/* Título do filme */}
-              {edge.movie && (
-                <text
-                  x={mx}
-                  y={my + (edge.movie.poster ? 48 : 16)}
-                  textAnchor="middle"
-                  className={`graph-movie-label ${isActive ? 'active' : ''}`}
-                >
-                  {edge.movie.title}
-                  {edge.movie.year ? ` (${edge.movie.year})` : ''}
-                  {edge.movie.type === 'tv' ? ' · série' : ''}
-                </text>
-              )}
-            </g>
-          )
-        })}
-
-        {/* Nós (atores) */}
-        {actors.map((actor, i) => {
-          const { x, y } = positions[i]
-          const isFirst  = i === 0
-          const isLast   = i === actors.length - 1
-
-          return (
-            <g key={`actor-${i}`} className="graph-actor-group">
-              <circle cx={x} cy={y} r={NODE_R + 5}
-                className={`graph-ring ${isFirst ? 'first' : isLast ? 'last' : ''}`}
-              />
-              <circle cx={x} cy={y} r={NODE_R} className="graph-circle" />
-
-              {actor.photo ? (
-                <image
-                  href={actor.photo}
-                  x={x - NODE_R} y={y - NODE_R}
-                  width={NODE_R * 2} height={NODE_R * 2}
-                  clipPath={`url(#clip-${i})`}
-                  preserveAspectRatio="xMidYMid slice"
-                />
-              ) : (
-                <text x={x} y={y} textAnchor="middle"
-                  dominantBaseline="middle" style={{ fontSize: '1.8rem' }}>👤</text>
-              )}
-
-              {(isFirst || isLast) && (
-                <text x={x} y={y - NODE_R - 12} textAnchor="middle"
-                  className={`graph-badge-top ${isFirst ? 'first' : 'last'}`}>
-                  {isFirst ? 'origem' : 'destino'}
-                </text>
-              )}
-
-              <text x={x} y={y + NODE_R + 18} textAnchor="middle"
-                className="graph-actor-label">
-                {actor.name}
-              </text>
-            </g>
-          )
-        })}
-      </svg>
-
-      {/* Tooltip */}
       {tip && (
         <div
           className="graph-tooltip"
           style={{
-            left: Math.min(tip.x + 16, dims.w - 300),
-            top:  Math.max(tip.y - 100, 10),
+            left: Math.min(Math.max(tip.x + 16, 12), Math.max(12, dims.w - 310)),
+            top: Math.max(tip.y - 104, 12),
           }}
         >
           {tip.movie.poster && (
@@ -306,17 +327,17 @@ function PathGraph({ path, insights, insightState, showInsights, selection }) {
               {tip.movie.title}
               {tip.movie.year ? ` (${tip.movie.year})` : ''}
               {tip.movie.type === 'tv' && (
-                <span className="graph-tooltip-badge">série</span>
+                <span className="graph-tooltip-badge">serie</span>
               )}
             </div>
             <div className="graph-tooltip-actors">
-              {tip.actorLeft} · {tip.actorRight}
+              {tip.actorLeft} - {tip.actorRight}
             </div>
             {tip.insight ? (
               <div className="graph-tooltip-text">{tip.insight}</div>
             ) : insightState === 'error' ? (
               <div className="graph-tooltip-text muted">
-                O grafo ficou pronto, mas a curiosidade dessa conexão não voltou agora.
+                O grafo ficou pronto, mas a curiosidade dessa conexao nao voltou agora.
               </div>
             ) : (
               <div className="graph-tooltip-text muted">Carregando curiosidade...</div>
@@ -326,6 +347,10 @@ function PathGraph({ path, insights, insightState, showInsights, selection }) {
       )}
     </div>
   )
+}
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max)
 }
 
 export default PathGraph

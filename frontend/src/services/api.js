@@ -3,8 +3,9 @@ const BASE = rawBase.replace(/\/$/, '')
 
 export async function searchActor(query, signal) {
   const res = await fetch(`${BASE}/search/?q=${encodeURIComponent(query)}`, { signal })
-  if (!res.ok) throw new Error('Erro na busca')
-  return res.json()
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || 'Erro na busca')
+  return data
 }
 
 export async function findConnection(actorAId, actorBId, signal) {
@@ -13,7 +14,7 @@ export async function findConnection(actorAId, actorBId, signal) {
     { signal },
   )
   const data = await res.json()
-  if (!res.ok) throw new Error(data.error || 'Erro ao buscar conexão')
+  if (!res.ok) throw new Error(data.error || 'Erro ao buscar conexao')
   return data
 }
 
@@ -52,6 +53,6 @@ export async function cancelConnectionJob(jobId) {
   try {
     await fetch(`${BASE}/connect/cancel/${jobId}/`, { method: 'POST' })
   } catch {
-    // Melhor esforço; ignoramos falha ao cancelar no backend.
+    // Melhor esforco; ignoramos falha ao cancelar no backend.
   }
 }

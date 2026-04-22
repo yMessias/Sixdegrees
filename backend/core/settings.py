@@ -6,6 +6,13 @@ load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+
+def _env_int(name, default):
+    try:
+        return int(os.getenv(name, default))
+    except (TypeError, ValueError):
+        return default
+
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'dev-secret-key-troque-em-producao')
 
 debug_env = os.getenv('DEBUG')
@@ -65,3 +72,4 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 TMDB_API_KEY = os.getenv('TMDB_API_KEY')
 GROQ_API_KEY = os.getenv('GROQ_API_KEY')
+SEARCH_DEEP_TIME_BUDGET_SECONDS = _env_int('SEARCH_DEEP_TIME_BUDGET_SECONDS', 180)

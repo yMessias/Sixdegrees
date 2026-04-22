@@ -1,15 +1,28 @@
 :root {
-  --bg:       #07090f;
-  --surface:  #0d1120;
-  --surface2: #131929;
-  --border:   rgba(120,160,255,0.1);
+  --bg:       #08090d;
+  --surface:  #11110f;
+  --surface2: #181713;
+  --border:   rgba(215,181,109,0.14);
   --accent:   #e8d5a3;
-  --accent2:  #c084fc;
-  --accent3:  #fb923c;
-  --green:    #4ade80;
-  --text:     #d4dae8;
-  --muted:    #4a5568;
+  --accent2:  #d7b56d;
+  --accent3:  #b65f4b;
+  --green:    #7ddf98;
+  --text:     #e4dfd4;
+  --muted:    #8b867c;
   --red:      #f87171;
+  --theme-bg: #08090d;
+  --theme-surface: rgba(17,17,15,0.78);
+  --theme-surface-strong: rgba(17,17,15,0.94);
+  --theme-line: rgba(215,181,109,0.18);
+  --theme-line-strong: rgba(215,181,109,0.34);
+  --theme-primary: #d7b56d;
+  --theme-primary-soft: rgba(215,181,109,0.13);
+  --theme-secondary: #b65f4b;
+  --theme-secondary-soft: rgba(182,95,75,0.13);
+  --theme-text: #e4dfd4;
+  --theme-heading: #f1dec1;
+  --theme-muted: #8b867c;
+  --theme-button-text: #0b0907;
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -17,7 +30,7 @@
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: 'DM Mono', monospace;
+  font-family: 'Inter', system-ui, sans-serif;
   height: 100vh;
   overflow: hidden;
   display: flex;
@@ -27,10 +40,7 @@ body {
 body::before {
   content: '';
   position: fixed; inset: 0;
-  background-image:
-    linear-gradient(rgba(255,255,255,0.012) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,255,255,0.012) 1px, transparent 1px);
-  background-size: 48px 48px;
+  background: rgba(255,255,255,0.01);
   pointer-events: none; z-index: 0;
 }
 

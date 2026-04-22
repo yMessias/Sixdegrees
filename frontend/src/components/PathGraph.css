@@ -1,9 +1,12 @@
 .graph-wrap {
   flex: 1;
   position: relative;
-  overflow: auto;
-  padding: 26px 28px 110px;
-  animation: fadeIn 0.5s ease;
+  overflow: hidden;
+  padding: 22px 28px 44px;
+  background:
+    linear-gradient(180deg, rgba(7,8,9,0.18), rgba(7,8,9,0.34)),
+    radial-gradient(circle at 50% 10%, rgba(216,183,109,0.05), transparent 34%);
+  animation: fadeIn 0.4s ease;
 }
 
 .graph-svg {
@@ -13,210 +16,219 @@
 
 .graph-header {
   display: flex;
-  align-items: flex-start;
-  justify-content: flex-start;
-  gap: 20px;
-  margin-bottom: 10px;
-}
-
-.graph-kicker {
-  font-size: 0.58rem;
-  text-transform: uppercase;
-  letter-spacing: 0.18em;
-  color: var(--muted);
-  margin-bottom: 8px;
+  align-items: center;
+  justify-content: center;
+  max-width: 980px;
+  margin: 0 auto 18px;
+  text-align: center;
 }
 
 .graph-title {
   font-family: 'Syne', sans-serif;
-  font-size: clamp(1.4rem, 2vw, 2rem);
-  color: var(--accent);
-  line-height: 1.08;
+  font-size: clamp(1.45rem, 2.2vw, 2.1rem);
+  color: var(--theme-heading);
+  line-height: 1.12;
+  text-align: center;
 }
 
 .graph-title span {
-  color: var(--accent2);
+  color: var(--theme-primary);
 }
 
-.graph-lede {
-  margin-top: 10px;
-  max-width: 460px;
-  font-size: 0.7rem;
-  line-height: 1.7;
-  color: var(--muted);
-}
-
-.graph-summary-index {
-  width: 24px;
-  height: 24px;
-  border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(251,146,60,0.15);
-  color: var(--accent3);
-  font-size: 0.72rem;
-  font-weight: 700;
-  flex-shrink: 0;
-}
-
-.graph-insights-panel {
-  margin-bottom: 22px;
-  padding: 18px;
-  border-radius: 22px;
-  border: 1px solid rgba(192,132,252,0.12);
+.graph-stage {
+  position: relative;
+  min-height: 460px;
+  max-width: 100%;
+  margin: 0 auto;
+  border: 1px solid rgba(228,199,131,0.14);
+  border-radius: 8px;
   background:
-    radial-gradient(circle at top right, rgba(251,146,60,0.10), transparent 28%),
-    rgba(13,17,32,0.72);
+    linear-gradient(180deg, rgba(10,12,13,0.36), rgba(10,12,13,0.2)),
+    rgba(10,12,13,0.18);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.04),
+    0 24px 70px rgba(0,0,0,0.28);
+  backdrop-filter: blur(6px);
+  overflow: hidden;
 }
 
-.graph-insights-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 14px;
-}
-
-.graph-insights-title {
-  font-family: 'Syne', sans-serif;
-  font-size: 1.1rem;
-  color: var(--accent);
-}
-
-.graph-insights-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 12px;
-}
-
-.graph-insight-card {
-  padding: 14px;
-  border-radius: 16px;
-  border: 1px solid rgba(192,132,252,0.10);
-  background: rgba(7,9,15,0.55);
-}
-
-.graph-insight-topline {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 10px;
-}
-
-.graph-insight-movie {
-  font-size: 0.7rem;
-  color: var(--accent3);
-}
-
-.graph-insight-pair {
-  font-size: 0.68rem;
-  color: var(--accent);
-  margin-bottom: 8px;
-}
-
-.graph-insight-text {
-  font-size: 0.67rem;
-  line-height: 1.65;
-  color: var(--text);
-}
-
-.graph-insight-text.muted {
-  opacity: 0.55;
-  font-style: italic;
-}
-
-/* ── Arestas ── */
 .graph-edge {
-  stroke: rgba(192,132,252,0.25);
-  stroke-width: 1.5;
-  stroke-dasharray: 6 4;
-  transition: stroke 0.2s, stroke-width 0.2s;
+  stroke: rgba(216,183,109,0.46);
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  transition: stroke 0.18s ease, stroke-width 0.18s ease, opacity 0.18s ease;
 }
 
 .graph-edge.active {
-  stroke: rgba(192,132,252,0.7);
-  stroke-width: 2.5;
-  stroke-dasharray: none;
+  stroke: rgba(242,223,185,0.9);
+  stroke-width: 3.8;
 }
 
-/* Poster na aresta */
-.graph-poster {
-  opacity: 0.75;
-  transition: opacity 0.2s;
+.graph-actor-group {
+  cursor: default;
 }
-.graph-poster.active { opacity: 1; }
 
-/* Label do filme */
-.graph-movie-label {
-  font-family: 'DM Mono', monospace;
-  font-size: 10px;
-  fill: rgba(251,146,60,0.6);
+.graph-edge-cards {
+  position: absolute;
+  inset: 0;
   pointer-events: none;
-  transition: fill 0.2s;
-}
-.graph-movie-label.active {
-  fill: rgba(251,146,60,1);
-  font-weight: 700;
 }
 
-/* ── Nós (atores) ── */
-.graph-actor-group { cursor: default; }
+.graph-edge-card {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: var(--poster-pad);
+  border: 1px solid rgba(228,199,131,0.28);
+  border-radius: 8px;
+  background: rgba(8,9,9,0.88);
+  box-shadow: 0 14px 32px rgba(0,0,0,0.36);
+  color: rgba(238,232,220,0.86);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  pointer-events: auto;
+  transition: border-color 0.16s ease, background 0.16s ease, transform 0.16s ease;
+}
+
+.graph-edge-card:hover,
+.graph-edge-card:focus-visible,
+.graph-edge-card.active {
+  border-color: rgba(216,183,109,0.72);
+  background: rgba(10,11,10,0.94);
+  outline: none;
+}
+
+.graph-edge-card-poster {
+  width: var(--poster-w);
+  height: var(--poster-h);
+  object-fit: cover;
+  flex: 0 0 var(--poster-w);
+  border-radius: 6px;
+  filter: saturate(1.42) contrast(1.16) brightness(1.2);
+  box-shadow: 0 0 0 1px rgba(238,232,220,0.4);
+}
+
+.graph-edge-card-copy {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  justify-content: center;
+}
+
+.graph-edge-card-title {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.25;
+  color: rgba(238,232,220,0.9);
+  overflow-wrap: anywhere;
+}
+
+.graph-edge-card-kind {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 2px 6px;
+  border: 1px solid rgba(216,183,109,0.26);
+  border-radius: 4px;
+  background: rgba(216,183,109,0.08);
+  font-family: 'DM Mono', monospace;
+  font-size: 8px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--theme-primary);
+}
 
 .graph-ring {
-  fill: none;
-  stroke: rgba(192,132,252,0.2);
-  stroke-width: 1;
+  fill: rgba(8,10,11,0.72);
+  stroke: rgba(228,199,131,0.18);
+  stroke-width: 1.4;
 }
-.graph-ring.first { stroke: rgba(192,132,252,0.6); }
-.graph-ring.last  { stroke: rgba(251,146,60,0.6); }
+
+.graph-ring.first {
+  stroke: rgba(216,183,109,0.72);
+}
+
+.graph-ring.last {
+  stroke: rgba(125,191,175,0.72);
+}
 
 .graph-circle {
-  fill: var(--surface2);
-  stroke: rgba(192,132,252,0.4);
+  fill: rgba(8,10,11,0.92);
+  stroke: rgba(238,232,220,0.22);
   stroke-width: 2;
 }
 
+.graph-avatar-placeholder {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 1.6rem;
+  font-weight: 800;
+  fill: var(--theme-secondary);
+}
+
 .graph-actor-label {
-  font-family: 'Syne', sans-serif;
-  font-weight: 700;
-  font-size: 12px;
-  fill: var(--accent);
+  font-family: 'Inter', system-ui, sans-serif;
+  font-weight: 800;
+  font-size: 13px;
+  fill: var(--theme-heading);
   pointer-events: none;
+  paint-order: stroke;
+  stroke: rgba(0,0,0,0.78);
+  stroke-width: 5px;
+  stroke-linejoin: round;
 }
 
 .graph-badge-top {
   font-family: 'DM Mono', monospace;
   font-size: 8px;
   text-transform: uppercase;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.08em;
   pointer-events: none;
+  paint-order: stroke;
+  stroke: rgba(0,0,0,0.72);
+  stroke-width: 4px;
 }
-.graph-badge-top.first { fill: rgba(192,132,252,0.7); }
-.graph-badge-top.last  { fill: rgba(251,146,60,0.7); }
 
-/* ── Tooltip ── */
+.graph-badge-top.first {
+  fill: var(--theme-primary);
+}
+
+.graph-badge-top.last {
+  fill: var(--theme-secondary);
+}
+
 .graph-tooltip {
   position: absolute;
-  background: var(--surface);
-  border: 1px solid rgba(251,146,60,0.3);
-  border-radius: 12px;
+  background: rgba(10,12,13,0.94);
+  border: 1px solid rgba(228,199,131,0.24);
+  border-radius: 8px;
   padding: 10px;
   display: flex;
   gap: 12px;
-  max-width: 280px;
+  max-width: 330px;
   pointer-events: none;
   z-index: 50;
-  animation: fadeIn 0.15s ease;
-  box-shadow: 0 12px 32px rgba(0,0,0,0.7);
+  animation: fadeIn 0.12s ease;
+  box-shadow: 0 18px 40px rgba(0,0,0,0.52);
+  backdrop-filter: blur(16px);
 }
 
 .graph-tooltip-poster {
-  width: 50px;
-  height: 70px;
+  width: 58px;
+  height: 82px;
   object-fit: cover;
   border-radius: 6px;
   flex-shrink: 0;
+  filter: saturate(1.5) contrast(1.22) brightness(1.38);
 }
 
 .graph-tooltip-body {
@@ -227,49 +239,51 @@
 }
 
 .graph-tooltip-title {
-  font-family: 'Syne', sans-serif;
+  font-family: 'Inter', system-ui, sans-serif;
   font-weight: 800;
-  font-size: 0.78rem;
-  color: var(--accent3);
+  font-size: 0.9rem;
+  color: var(--theme-heading);
   line-height: 1.3;
 }
 
 .graph-tooltip-text {
-  font-size: 0.63rem;
-  color: var(--text);
-  line-height: 1.6;
-  opacity: 0.85;
+  font-size: 0.78rem;
+  color: rgba(238,232,220,0.82);
+  line-height: 1.55;
 }
 
-.graph-tooltip-text.muted { opacity: 0.4; font-style: italic; }
+.graph-tooltip-text.muted {
+  opacity: 0.48;
+  font-style: italic;
+}
 
 .graph-tooltip-actors {
-  font-size: 0.6rem;
-  color: var(--accent2);
-  letter-spacing: 0.05em;
-  margin-bottom: 4px;
+  font-size: 0.7rem;
+  color: var(--theme-primary);
+  margin-bottom: 2px;
 }
 
 .graph-tooltip-badge {
   display: inline-block;
   margin-left: 6px;
   font-size: 0.55rem;
-  background: rgba(251,146,60,0.15);
-  color: var(--accent3);
-  border: 1px solid rgba(251,146,60,0.3);
+  background: var(--theme-secondary-soft);
+  color: var(--theme-secondary);
+  border: 1px solid rgba(125,191,175,0.28);
   border-radius: 4px;
   padding: 1px 5px;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   vertical-align: middle;
 }
 
 @media (max-width: 960px) {
   .graph-wrap {
-    padding: 20px 16px 96px;
+    padding: 20px 16px 44px;
   }
 
-  .graph-insights-header {
-    flex-direction: column;
+  .graph-stage {
+    min-height: 540px;
+    overflow: auto;
   }
 }

@@ -2,14 +2,25 @@ import { useState, useEffect, useRef } from 'react'
 import { searchActor } from '../services/api'
 import './SearchForm.css'
 
-function ActorInput({ label, value, onChange }) {
-  const [query, setQuery]         = useState(value?.name || '')
-  const [results, setResults]     = useState([])
-  const [loading, setLoading]     = useState(false)
-  const [open, setOpen]           = useState(false)
-  const debounceRef               = useRef(null)
-  const wrapRef                   = useRef(null)
-  const abortRef                  = useRef(null)
+const FORM_CONFIG = {
+  headline: <>Conecte <span>atores</span> pelo cinema</>,
+  labels: ['Ator A', 'Ator B'],
+  placeholder: 'Nome do ator...',
+  warning: 'Escolha dois atores diferentes para montar a cadeia.',
+  button: 'Buscar conexao no cinema',
+  loading: 'Buscando no cinema...',
+  search: searchActor,
+}
+
+function EntityInput({ label, value, onChange, config }) {
+  const [query, setQuery] = useState(value?.name || '')
+  const [results, setResults] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [open, setOpen] = useState(false)
+  const [error, setError] = useState(null)
+  const debounceRef = useRef(null)
+  const wrapRef = useRef(null)
+  const abortRef = useRef(null)
 
   useEffect(() => {
     setQuery(value?.name || '')
@@ -24,6 +35,7 @@ function ActorInput({ label, value, onChange }) {
       setResults([])
       setOpen(false)
       setLoading(false)
+      setError(null)
       return
     }
 
@@ -31,13 +43,16 @@ function ActorInput({ label, value, onChange }) {
       const controller = new AbortController()
       abortRef.current = controller
       setLoading(true)
+      setError(null)
       try {
-        const data = await searchActor(term, controller.signal)
+        const data = await config.search(term, controller.signal)
         setResults(data)
         setOpen(data.length > 0)
-      } catch (error) {
-        if (error.name !== 'AbortError') {
+      } catch (err) {
+        if (err.name !== 'AbortError') {
           setResults([])
+          setOpen(false)
+          setError(err.message)
         }
       } finally {
         if (!controller.signal.aborted) {
@@ -50,7 +65,7 @@ function ActorInput({ label, value, onChange }) {
       clearTimeout(debounceRef.current)
       abortRef.current?.abort()
     }
-  }, [query, value?.name])
+  }, [query, value?.name, config])
 
   useEffect(() => {
     function handleClick(e) {
@@ -60,11 +75,12 @@ function ActorInput({ label, value, onChange }) {
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
-  function select(actor) {
-    setQuery(actor.name)
+  function select(entity) {
+    setQuery(entity.name)
     setResults([])
     setOpen(false)
-    onChange(actor)
+    setError(null)
+    onChange(entity)
   }
 
   return (
@@ -76,7 +92,7 @@ function ActorInput({ label, value, onChange }) {
         )}
         <input
           className="actor-input"
-          placeholder="Nome do ator..."
+          placeholder={config.placeholder}
           value={query}
           onChange={e => { setQuery(e.target.value); if (!e.target.value) onChange(null) }}
           onKeyDown={e => {
@@ -88,18 +104,20 @@ function ActorInput({ label, value, onChange }) {
         {loading && <div className="actor-input-spinner" />}
       </div>
 
+      {error && <div className="actor-input-error">{error}</div>}
+
       {open && results.length > 0 && (
         <ul className="actor-dropdown">
-          {results.map(actor => (
-            <li key={actor.id} className="actor-option" onMouseDown={() => select(actor)}>
-              {actor.photo
-                ? <img src={actor.photo} alt={actor.name} className="actor-option-photo" />
+          {results.map(entity => (
+            <li key={entity.id} className="actor-option" onMouseDown={() => select(entity)}>
+              {entity.photo
+                ? <img src={entity.photo} alt={entity.name} className="actor-option-photo" />
                 : <div className="actor-option-photo placeholder">?</div>
               }
               <div>
-                <div className="actor-option-name">{actor.name}</div>
-                {actor.known_for && (
-                  <div className="actor-option-known">{actor.known_for}</div>
+                <div className="actor-option-name">{entity.name}</div>
+                {entity.known_for && (
+                  <div className="actor-option-known">{entity.known_for}</div>
                 )}
               </div>
             </li>
@@ -111,59 +129,38 @@ function ActorInput({ label, value, onChange }) {
 }
 
 function SearchForm({ onSearch, loading }) {
-  const [actorA, setActorA] = useState(null)
-  const [actorB, setActorB] = useState(null)
-  const sameActor = actorA && actorB && actorA.id === actorB.id
+  const config = FORM_CONFIG
+  const [entityA, setEntityA] = useState(null)
+  const [entityB, setEntityB] = useState(null)
+  const sameEntity = entityA && entityB && entityA.id === entityB.id
 
   function handleSubmit() {
-    if (!actorA || !actorB) return
-    if (sameActor) return
-    onSearch(actorA, actorB)
-  }
-
-  function swapActors() {
-    setActorA(actorB)
-    setActorB(actorA)
+    if (!entityA || !entityB) return
+    if (sameEntity) return
+    onSearch(entityA, entityB)
   }
 
   return (
     <div className="search-form">
-      <div className="search-eyebrow">teoria dos 6 graus de separação</div>
-      <h1 className="search-headline">
-        Conecte <span>atores</span> pelo cinema
-      </h1>
+      <h1 className="search-headline">{config.headline}</h1>
 
       <div className="search-inputs">
-        <ActorInput label="Ator A" value={actorA} onChange={setActorA} />
-        <button
-          type="button"
-          className="search-swap-btn"
-          onClick={swapActors}
-          disabled={!actorA && !actorB}
-          aria-label="Inverter atores"
-        >
-          ⇄
-        </button>
-        <ActorInput label="Ator B" value={actorB} onChange={setActorB} />
+        <EntityInput label={config.labels[0]} value={entityA} onChange={setEntityA} config={config} />
+        <EntityInput label={config.labels[1]} value={entityB} onChange={setEntityB} config={config} />
       </div>
 
       <button
         className="search-btn"
         onClick={handleSubmit}
-        disabled={!actorA || !actorB || sameActor || loading}
+        disabled={!entityA || !entityB || sameEntity || loading}
       >
-        {loading ? 'Buscando...' : 'Encontrar Conexão'}
+        {loading ? config.loading : config.button}
       </button>
 
-      {sameActor && (
-        <p className="search-warning">
-          Escolha dois atores diferentes para montar a cadeia.
-        </p>
+      {sameEntity && (
+        <p className="search-warning">{config.warning}</p>
       )}
 
-      <p className="search-hint">
-        Digite pelo menos 2 letras em cada campo e descubra a menor cadeia que o app encontrar
-      </p>
     </div>
   )
 }

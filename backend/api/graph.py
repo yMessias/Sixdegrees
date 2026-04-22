@@ -1,6 +1,9 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from time import perf_counter
 
+import requests
+from django.conf import settings
+
 from . import tmdb
 
 ACTOR_FETCH_WORKERS = 16
@@ -8,34 +11,27 @@ CAST_FETCH_WORKERS = 12
 FRONTIER_SCAN_BATCH = 8
 CAST_EXPANSION_BATCH = 6
 
+SOURCE_SIDE = 'source'
+TARGET_SIDE = 'target'
+
 FAST_PROFILE = {
     'time_budget_seconds': 8,
     'max_frontier_size': 80,
-    'max_credit_batch': 120,
-    'two_hop_source_credit_limit': 18,
-    'two_hop_cast_limit': 48,
-    'two_hop_candidate_credit_limit': 24,
-    'two_hop_candidate_limit': 72,
-    'two_hop_candidate_batch': 6,
-    'target_neighbor_credit_limit': 24,
-    'target_neighbor_cast_limit': 48,
-    'credit_limits': [16, 10, 6, 4],
-    'cast_limits': [16, 10, 6, 4],
+    'max_credit_batch': 90,
+    'frontier_limits': [80, 60, 45, 35, 30, 25],
+    'credit_limits': [18, 12, 8, 6, 5, 4],
+    'cast_limits': [22, 16, 12, 10, 8, 6],
+    'episode_limits': [6, 3, 2, 1, 1, 1],
 }
 
 DEEP_PROFILE = {
-    'time_budget_seconds': None,
+    'time_budget_seconds': settings.SEARCH_DEEP_TIME_BUDGET_SECONDS,
     'max_frontier_size': None,
-    'max_credit_batch': None,
-    'two_hop_source_credit_limit': 30,
-    'two_hop_cast_limit': 120,
-    'two_hop_candidate_credit_limit': 40,
-    'two_hop_candidate_limit': 160,
-    'two_hop_candidate_batch': 8,
-    'target_neighbor_credit_limit': 60,
-    'target_neighbor_cast_limit': 120,
-    'credit_limits': [28, 22, 16, 12, 10, 8],
-    'cast_limits': [28, 22, 16, 12, 10, 8],
+    'max_credit_batch': 170,
+    'frontier_limits': [160, 55, 46, 38, 32, 26],
+    'credit_limits': [30, 16, 11, 8, 6, 5],
+    'cast_limits': [34, 20, 15, 10, 8, 6],
+    'episode_limits': [8, 3, 2, 1, 1, 1],
 }
 
 
@@ -86,12 +82,27 @@ def find_path(
         )
         return result
 
-    target_credits = {
-        (credit['id'], credit['type']): credit
-        for credit in credits_b
+    credit_indexes = {
+        actor_a_id: _index_credits(credits_a),
+        actor_b_id: _index_credits(credits_b),
     }
+    credits_cache = {
+        actor_a_id: credits_a,
+        actor_b_id: credits_b,
+    }
+    side_credit_indexes = {
+        SOURCE_SIDE: {},
+        TARGET_SIDE: {},
+    }
+    _add_actor_credits_to_side_index(side_credit_indexes[SOURCE_SIDE], actor_a_id, credits_a)
+    _add_actor_credits_to_side_index(side_credit_indexes[TARGET_SIDE], actor_b_id, credits_b)
 
-    direct_credit = _find_shared_credit(credits_a, target_credits)
+    direct_credit = _find_shared_credit(
+        actor_a_id,
+        credits_a,
+        actor_b_id,
+        credit_indexes[actor_b_id],
+    )
     if direct_credit:
         result = [
             _build_step(actor_a, direct_credit),
@@ -116,225 +127,199 @@ def find_path(
         )
         return result
 
+    visited = {
+        SOURCE_SIDE: {
+            actor_a_id: {
+                'parent': None,
+                'credit': None,
+                'depth': 0,
+                'actor': actor_a,
+            },
+        },
+        TARGET_SIDE: {
+            actor_b_id: {
+                'parent': None,
+                'credit': None,
+                'depth': 0,
+                'actor': actor_b,
+            },
+        },
+    }
+    frontiers = {
+        SOURCE_SIDE: [actor_a_id],
+        TARGET_SIDE: [actor_b_id],
+    }
+    expanded_credits = {
+        SOURCE_SIDE: set(),
+        TARGET_SIDE: set(),
+    }
+
     _emit_progress(
         progress_callback,
         {
             'stage': 'starting',
             'depth': 0,
             'explored_actors': 2,
-            'frontier_size': 1,
-            'frontier_sample': [actor_b['name']],
-            'message': f'Mapeando conexoes mais fortes de {actor_b["name"]}.',
+            'frontier_size': 2,
+            'frontier_sample': [actor_a['name'], actor_b['name']],
+            'message': (
+                f'Busca bidirecional entre {actor_a["name"]} e '
+                f'{actor_b["name"]}.'
+            ),
         },
     )
 
-    two_hop_result = _find_two_hop_path(
-        actor_a=actor_a,
-        actor_b=actor_b,
-        credits_a=credits_a,
-        target_credits=target_credits,
-        profile=profile,
-        deadline=deadline,
-        cancel_check=cancel_check,
-    )
-    if two_hop_result:
-        _emit_progress(
-            progress_callback,
-            {
-                'stage': 'found',
-                'depth': 2,
-                'explored_actors': 3,
-                'frontier_size': 3,
-                'frontier_sample': [step['actor']['name'] for step in two_hop_result],
-                'message': 'Conexao em 2 graus encontrada.',
-                'history_entry': {
-                    'depth': 2,
-                    'label': 'Conexao em 2 graus',
-                    'sample_names': [step['actor']['name'] for step in two_hop_result],
-                    'discovered_count': 3,
-                },
-            },
-        )
-        return two_hop_result
-
-    target_neighbor_limit = profile['target_neighbor_credit_limit']
-    target_neighbor_credits = _credit_window(credits_b, target_neighbor_limit)
-    target_neighbor_map = _build_target_neighbor_map(
-        actor_b_id=actor_b_id,
-        target_credits=target_neighbor_credits,
-        cast_limit=profile['target_neighbor_cast_limit'],
-        deadline=deadline,
-        cancel_check=cancel_check,
-    )
-
-    visited = {
-        actor_a_id: {
-            'parent': None,
-            'credit': None,
-            'depth': 0,
-            'actor': actor_a,
-        }
-    }
-    frontier = [actor_a_id]
-    visited_credits = set()
-
-    _emit_progress(
-        progress_callback,
-        {
-            'stage': 'starting',
-            'depth': 0,
-            'explored_actors': 1,
-            'frontier_size': 1,
-            'frontier_sample': [actor_a['name']],
-            'message': f'Partindo de {actor_a["name"]} em direcao a {actor_b["name"]}.',
-        },
-    )
-
-    while frontier:
+    while frontiers[SOURCE_SIDE] or frontiers[TARGET_SIDE]:
         _check_runtime_constraints(deadline, cancel_check)
-        current_depth = visited[frontier[0]]['depth']
+
+        side = _select_side_to_expand(frontiers, visited, max_degrees)
+        if not side:
+            break
+
+        other_side = _other_side(side)
+        frontier = frontiers[side]
+        current_depth = _frontier_depth(frontier, visited[side])
+        frontier = _trim_frontier(frontier, profile, current_depth)
+        frontiers[side] = frontier
         if _frontier_exceeded(frontier, profile):
             raise SearchBudgetExceeded()
 
         credit_limit = _limit_for_depth(profile['credit_limits'], current_depth)
         cast_limit = _limit_for_depth(profile['cast_limits'], current_depth)
-        credits_by_actor = {}
+        episode_limit = _limit_for_depth(profile['episode_limits'], current_depth)
 
         _emit_progress(
             progress_callback,
             {
                 'stage': 'exploring',
                 'depth': current_depth,
-                'explored_actors': len(visited),
+                'explored_actors': _visited_count(visited),
                 'frontier_size': len(frontier),
-                'frontier_sample': _sample_frontier_names(frontier, visited),
-                'message': f'Explorando a camada {current_depth + 1} de ate {max_degrees} graus.',
+                'frontier_sample': _sample_frontier_names(frontier, visited[side]),
+                'message': (
+                    f'Expandindo {_side_label(side)} no grau '
+                    f'{current_depth + 1} de {max_degrees}.'
+                ),
             },
         )
 
+        credits_by_actor = {}
         for frontier_chunk in _iter_chunks(frontier, FRONTIER_SCAN_BATCH):
             chunk_credits = _load_frontier_credits(frontier_chunk, credit_limit)
             credits_by_actor.update(chunk_credits)
-
-            for actor_id in frontier_chunk:
-                node = visited[actor_id]
-                credits = credits_by_actor[actor_id]
-                shared_credit = _find_shared_credit(credits, target_credits)
-                if shared_credit and node['depth'] + 1 <= max_degrees:
-                    visited[actor_b_id] = {
-                        'parent': actor_id,
-                        'credit': shared_credit,
-                        'depth': node['depth'] + 1,
-                        'actor': actor_b,
-                    }
-                    result = _reconstruct(actor_b_id, visited)
-                    _emit_progress(
-                        progress_callback,
-                        {
-                            'stage': 'found',
-                            'depth': node['depth'] + 1,
-                            'explored_actors': len(visited),
-                            'frontier_size': len(frontier),
-                            'frontier_sample': _sample_frontier_names(frontier, visited),
-                            'message': 'Conexao encontrada.',
-                        },
+            for actor_id, credits in chunk_credits.items():
+                cached_credits = credits_cache.get(actor_id)
+                if cached_credits is None or len(credits) > len(cached_credits):
+                    credits_cache[actor_id] = credits
+                    credit_indexes[actor_id] = _index_credits(credits)
+                    _add_actor_credits_to_side_index(
+                        side_credit_indexes[side],
+                        actor_id,
+                        credits,
                     )
-                    return result
 
-        if current_depth >= max_degrees - 1:
-            break
+            direct_result = _find_direct_bridge(
+                side=side,
+                frontier_chunk=frontier_chunk,
+                chunk_credits=chunk_credits,
+                visited=visited,
+                credit_indexes=credit_indexes,
+                side_credit_indexes=side_credit_indexes,
+                max_degrees=max_degrees,
+            )
+            if direct_result:
+                _emit_found(progress_callback, direct_result, visited, frontiers)
+                return direct_result
+
+        if current_depth >= max_degrees:
+            frontiers[side] = []
+            continue
+
+        credits_to_expand = _collect_credits_to_expand(
+            side,
+            frontier,
+            credits_by_actor,
+            expanded_credits[side],
+            profile['max_credit_batch'],
+        )
 
         next_frontier = []
         queued = set()
-        max_credit_batch = profile['max_credit_batch']
-        credits_to_expand = []
-
-        for actor_id in frontier:
-            for credit in credits_by_actor[actor_id]:
-                credit_key = (credit['id'], credit['type'])
-                if credit_key in visited_credits:
-                    continue
-                visited_credits.add(credit_key)
-                credits_to_expand.append((actor_id, credit))
-                if max_credit_batch and len(credits_to_expand) >= max_credit_batch:
-                    break
-            if max_credit_batch and len(credits_to_expand) >= max_credit_batch:
-                break
 
         for credit_chunk in _iter_chunks(credits_to_expand, CAST_EXPANSION_BATCH):
-            credit_owners = [item[0] for item in credit_chunk]
-            credit_batch = [item[1] for item in credit_chunk]
-
-            for (actor_id, credit), cast in _load_casts(credit_owners, credit_batch, cast_limit):
+            for (actor_id, credit), neighbors in _load_neighbor_edges(
+                credit_chunk,
+                cast_limit,
+                episode_limit,
+            ):
                 _check_runtime_constraints(deadline, cancel_check)
-                for member in cast:
-                    member_id = member['id']
-                    if member_id == actor_id:
+                actor_node = visited[side][actor_id]
+                neighbor_depth = actor_node['depth'] + 1
+
+                for member, edge_credit in neighbors:
+                    member_id = member.get('id')
+                    if not member_id or member_id == actor_id:
                         continue
 
-                    if _connect_via_target_neighbor(
-                        actor_id=actor_id,
-                        actor_b=actor_b,
-                        actor_b_id=actor_b_id,
-                        credit=credit,
-                        member=member,
-                        target_neighbor_map=target_neighbor_map,
-                        visited=visited,
-                        max_degrees=max_degrees,
-                    ):
-                        result = _reconstruct(actor_b_id, visited)
-                        _emit_progress(
-                            progress_callback,
-                            {
-                                'stage': 'found',
-                                'depth': len(result) - 1,
-                                'explored_actors': len(visited),
-                                'frontier_size': len(next_frontier),
-                                'frontier_sample': _sample_frontier_names(next_frontier, visited),
-                                'message': 'Conexao encontrada.',
-                            },
-                        )
-                        return result
+                    if member_id in visited[other_side]:
+                        if member_id not in visited[side]:
+                            visited[side][member_id] = {
+                                'parent': actor_id,
+                                'credit': edge_credit,
+                                'depth': neighbor_depth,
+                                'actor': member,
+                            }
 
-                    if member_id in visited:
+                        if _combined_depth(member_id, visited) <= max_degrees:
+                            result = _build_bidirectional_path(
+                                member_id,
+                                visited[SOURCE_SIDE],
+                                visited[TARGET_SIDE],
+                            )
+                            _emit_found(progress_callback, result, visited, frontiers)
+                            return result
+
+                    if member_id in visited[side]:
                         continue
 
-                    visited[member_id] = {
+                    visited[side][member_id] = {
                         'parent': actor_id,
-                        'credit': credit,
-                        'depth': visited[actor_id]['depth'] + 1,
+                        'credit': edge_credit,
+                        'depth': neighbor_depth,
                         'actor': member,
                     }
                     if member_id not in queued:
                         queued.add(member_id)
                         next_frontier.append(member_id)
 
+        next_frontier = _trim_frontier(next_frontier, profile, current_depth + 1)
+
         _emit_progress(
             progress_callback,
             {
                 'stage': 'layer_complete',
                 'depth': current_depth + 1,
-                'explored_actors': len(visited),
+                'explored_actors': _visited_count(visited),
                 'frontier_size': len(next_frontier),
-                'frontier_sample': _sample_frontier_names(next_frontier, visited),
-                'message': f'Camada {current_depth + 1} concluida.',
+                'frontier_sample': _sample_frontier_names(next_frontier, visited[side]),
+                'message': f'{_side_label(side).capitalize()} grau {current_depth + 1} concluido.',
                 'history_entry': {
                     'depth': current_depth + 1,
-                    'label': f'Grau {current_depth + 1}',
-                    'sample_names': _sample_frontier_names(next_frontier, visited, limit=5),
+                    'label': f'{_side_label(side).capitalize()} grau {current_depth + 1}',
+                    'sample_names': _sample_frontier_names(next_frontier, visited[side], limit=5),
                     'discovered_count': len(next_frontier),
                 },
             },
         )
 
-        frontier = next_frontier
+        frontiers[side] = next_frontier
 
     _emit_progress(
         progress_callback,
         {
             'stage': 'not_found',
             'depth': max_degrees,
-            'explored_actors': len(visited),
+            'explored_actors': _visited_count(visited),
             'frontier_size': 0,
             'frontier_sample': [],
             'message': f'Nenhuma conexao encontrada em ate {max_degrees} graus.',
@@ -346,7 +331,7 @@ def find_path(
 def _load_frontier_credits(frontier, credit_limit):
     if len(frontier) == 1:
         actor_id = frontier[0]
-        return {actor_id: tmdb.get_actor_credits(actor_id, credit_limit)}
+        return {actor_id: _safe_get_actor_credits(actor_id, credit_limit)}
 
     results = {}
     with ThreadPoolExecutor(max_workers=min(ACTOR_FETCH_WORKERS, len(frontier))) as pool:
@@ -356,176 +341,143 @@ def _load_frontier_credits(frontier, credit_limit):
         }
         for future in as_completed(future_map):
             actor_id = future_map[future]
-            results[actor_id] = future.result()
+            try:
+                results[actor_id] = future.result()
+            except requests.RequestException:
+                results[actor_id] = []
     return results
 
 
-def _load_casts(credit_owners, credits, cast_limit):
-    if not credits:
+def _load_neighbor_edges(actor_credit_pairs, cast_limit, episode_limit):
+    if not actor_credit_pairs:
         return []
 
-    if len(credits) == 1:
-        credit = credits[0]
+    if len(actor_credit_pairs) == 1:
+        actor_id, credit = actor_credit_pairs[0]
         return [
             (
-                (credit_owners[0], credit),
-                tmdb.get_movie_cast(credit['id'], credit['type'], cast_limit),
+                (actor_id, credit),
+                _safe_get_credit_cast(actor_id, credit, cast_limit, episode_limit),
             )
         ]
 
-    results = [None] * len(credits)
-    with ThreadPoolExecutor(max_workers=min(CAST_FETCH_WORKERS, len(credits))) as pool:
+    results = [None] * len(actor_credit_pairs)
+    with ThreadPoolExecutor(max_workers=min(CAST_FETCH_WORKERS, len(actor_credit_pairs))) as pool:
         future_map = {
-            pool.submit(tmdb.get_movie_cast, credit['id'], credit['type'], cast_limit): idx
-            for idx, credit in enumerate(credits)
+            pool.submit(
+                tmdb.get_credit_cast,
+                actor_id,
+                credit,
+                cast_limit,
+                episode_limit,
+            ): idx
+            for idx, (actor_id, credit) in enumerate(actor_credit_pairs)
         }
         for future in as_completed(future_map):
             idx = future_map[future]
-            results[idx] = future.result()
+            try:
+                results[idx] = future.result()
+            except requests.RequestException:
+                results[idx] = []
 
-    return list(zip(zip(credit_owners, credits), results))
-
-
-def _build_target_neighbor_map(actor_b_id, target_credits, cast_limit, deadline, cancel_check):
-    target_neighbors = {}
-    for credit_chunk in _iter_chunks(target_credits, CAST_EXPANSION_BATCH):
-        _check_runtime_constraints(deadline, cancel_check)
-        credit_owners = [actor_b_id] * len(credit_chunk)
-        for (_, credit), cast in _load_casts(credit_owners, credit_chunk, cast_limit):
-            _check_runtime_constraints(deadline, cancel_check)
-            for member in cast:
-                member_id = member['id']
-                if member_id == actor_b_id or member_id in target_neighbors:
-                    continue
-                target_neighbors[member_id] = credit
-    return target_neighbors
+    return list(zip(actor_credit_pairs, results))
 
 
-def _find_two_hop_path(actor_a, actor_b, credits_a, target_credits, profile, deadline, cancel_check):
-    source_credits = _credit_window(credits_a, profile['two_hop_source_credit_limit'])
-    if not source_credits or not target_credits:
-        return None
+def _find_direct_bridge(
+    side,
+    frontier_chunk,
+    chunk_credits,
+    visited,
+    credit_indexes,
+    side_credit_indexes,
+    max_degrees,
+):
+    other_side = _other_side(side)
+    other_credit_index = side_credit_indexes[other_side]
 
-    source_groups = []
-    for credit_chunk in _iter_chunks(source_credits, CAST_EXPANSION_BATCH):
-        _check_runtime_constraints(deadline, cancel_check)
-        credit_owners = [actor_a['id']] * len(credit_chunk)
-        for (_, credit), cast in _load_casts(credit_owners, credit_chunk, profile['two_hop_cast_limit']):
-            _check_runtime_constraints(deadline, cancel_check)
-            ordered_cast = [member for member in cast if member['id'] != actor_a['id']]
-            if ordered_cast:
-                source_groups.append({
-                    'credit': credit,
-                    'cast': ordered_cast,
-                })
+    for actor_id in frontier_chunk:
+        node = visited[side][actor_id]
+        credits = chunk_credits.get(actor_id) or []
 
-    candidate_limit = profile['two_hop_candidate_limit']
-    candidate_batch = profile['two_hop_candidate_batch']
-    candidate_credit_limit = profile['two_hop_candidate_credit_limit']
-
-    for candidate_chunk in _iter_chunks(
-        list(_iter_round_robin_source_candidates(source_groups, candidate_limit)),
-        candidate_batch,
-    ):
-        _check_runtime_constraints(deadline, cancel_check)
-        candidate_ids = [candidate['actor']['id'] for candidate in candidate_chunk]
-        candidate_credits = _load_frontier_credits(candidate_ids, candidate_credit_limit)
-
-        for candidate in candidate_chunk:
-            _check_runtime_constraints(deadline, cancel_check)
-            shared_credit = _find_shared_credit(
-                candidate_credits[candidate['actor']['id']],
-                target_credits,
+        other_node = visited[other_side].get(actor_id)
+        if other_node and node['depth'] + other_node['depth'] <= max_degrees:
+            return _build_bidirectional_path(
+                actor_id,
+                visited[SOURCE_SIDE],
+                visited[TARGET_SIDE],
             )
-            if not shared_credit:
+
+        for credit in credits:
+            credit_key = _credit_key(credit)
+            if not credit_key:
                 continue
 
-            return [
-                _build_step(actor_a, candidate['credit']),
-                _build_step(candidate['actor'], shared_credit),
-                _build_step(actor_b, None),
-            ]
+            candidate_actor_ids = other_credit_index.get(credit_key)
+            if not candidate_actor_ids:
+                continue
+
+            for other_actor_id in candidate_actor_ids:
+                other_node = visited[other_side].get(other_actor_id)
+                if not other_node:
+                    continue
+
+                if actor_id == other_actor_id:
+                    continue
+
+                if node['depth'] + other_node['depth'] + 1 > max_degrees:
+                    continue
+
+                target_index = credit_indexes.get(other_actor_id)
+                if target_index is None:
+                    continue
+
+                shared_credit = _find_shared_credit(
+                    actor_id,
+                    [credit],
+                    other_actor_id,
+                    target_index,
+                )
+                if not shared_credit:
+                    continue
+
+                if side == SOURCE_SIDE:
+                    return _build_path_between_trees(
+                        actor_id,
+                        other_actor_id,
+                        shared_credit,
+                        visited[SOURCE_SIDE],
+                        visited[TARGET_SIDE],
+                    )
+
+                return _build_path_between_trees(
+                    other_actor_id,
+                    actor_id,
+                    shared_credit,
+                    visited[SOURCE_SIDE],
+                    visited[TARGET_SIDE],
+                )
 
     return None
 
 
-def _iter_round_robin_source_candidates(source_groups, limit=None):
-    seen = set()
-    yielded = 0
-    depth = 0
-    while source_groups:
-        yielded_in_round = False
-        for group in source_groups:
-            cast = group['cast']
-            if depth >= len(cast):
-                continue
-
-            member = cast[depth]
-            member_id = member['id']
-            if member_id in seen:
-                continue
-
-            seen.add(member_id)
-            yielded += 1
-            yielded_in_round = True
-            yield {
-                'actor': member,
-                'credit': group['credit'],
-            }
-
-            if limit is not None and yielded >= limit:
-                return
-
-        if not yielded_in_round:
-            return
-        depth += 1
-
-
-def _connect_via_target_neighbor(
-    actor_id,
-    actor_b,
-    actor_b_id,
-    credit,
-    member,
-    target_neighbor_map,
-    visited,
-    max_degrees,
-):
-    member_id = member['id']
-    target_credit = target_neighbor_map.get(member_id)
-    if not target_credit:
-        return False
-
-    if member_id not in visited:
-        visited[member_id] = {
-            'parent': actor_id,
-            'credit': credit,
-            'depth': visited[actor_id]['depth'] + 1,
-            'actor': member,
-        }
-
-    member_depth = visited[member_id]['depth']
-    if member_depth + 1 > max_degrees:
-        return False
-
-    visited[actor_b_id] = {
-        'parent': member_id,
-        'credit': target_credit,
-        'depth': member_depth + 1,
-        'actor': actor_b,
-    }
-    return True
-
-
-def _find_shared_credit(credits, target_credits):
+def _find_shared_credit(actor_id, credits, target_actor_id, target_index):
     for credit in credits:
-        target = target_credits.get((credit['id'], credit['type']))
+        target = target_index.get(_credit_key(credit))
         if not target:
             continue
 
+        if credit.get('type') == 'tv':
+            try:
+                shared_episode = tmdb.find_shared_tv_episode(actor_id, credit, target_actor_id, target)
+            except requests.RequestException:
+                shared_episode = None
+            if shared_episode:
+                return shared_episode
+            continue
+
         return {
-            'id': credit['id'],
-            'type': credit['type'],
+            'id': credit.get('id'),
+            'type': 'movie',
             'title': credit.get('title') or target.get('title'),
             'year': credit.get('year') or target.get('year'),
             'poster': credit.get('poster') or target.get('poster'),
@@ -533,7 +485,201 @@ def _find_shared_credit(credits, target_credits):
     return None
 
 
+def _safe_get_actor_credits(actor_id, credit_limit):
+    try:
+        return tmdb.get_actor_credits(actor_id, credit_limit)
+    except requests.RequestException:
+        return []
+
+
+def _safe_get_credit_cast(actor_id, credit, cast_limit, episode_limit):
+    try:
+        return tmdb.get_credit_cast(actor_id, credit, cast_limit, episode_limit)
+    except requests.RequestException:
+        return []
+
+
+def _collect_credits_to_expand(side, frontier, credits_by_actor, expanded_credits, max_credit_batch):
+    credits_to_expand = []
+
+    for actor_id, credit in _iter_round_robin_credits(frontier, credits_by_actor):
+        expansion_key = _expansion_key(actor_id, credit)
+        if expansion_key in expanded_credits:
+            continue
+
+        expanded_credits.add(expansion_key)
+        credits_to_expand.append((actor_id, credit))
+        if max_credit_batch and len(credits_to_expand) >= max_credit_batch:
+            return credits_to_expand
+
+    return credits_to_expand
+
+
+def _iter_round_robin_credits(frontier, credits_by_actor):
+    ordered_credits = {
+        actor_id: _order_credits_for_expansion(credits_by_actor.get(actor_id, []))
+        for actor_id in frontier
+    }
+    depth = 0
+    while True:
+        yielded = False
+        for actor_id in frontier:
+            credits = ordered_credits.get(actor_id) or []
+            if depth >= len(credits):
+                continue
+
+            yielded = True
+            yield actor_id, credits[depth]
+
+        if not yielded:
+            return
+
+        depth += 1
+
+
+def _order_credits_for_expansion(credits):
+    movies = [credit for credit in credits if credit.get('type') == 'movie']
+    tv = [credit for credit in credits if credit.get('type') == 'tv']
+    return list(_interleave(movies, tv))
+
+
+def _interleave(primary, secondary):
+    max_len = max(len(primary), len(secondary))
+    for idx in range(max_len):
+        if idx < len(primary):
+            yield primary[idx]
+        if idx < len(secondary):
+            yield secondary[idx]
+
+
+def _expansion_key(actor_id, credit):
+    if credit.get('type') == 'tv':
+        return ('tv', actor_id, credit.get('id'), credit.get('credit_id'))
+    return ('movie', credit.get('id'))
+
+
+def _credit_key(credit):
+    credit_id = credit.get('id')
+    credit_type = credit.get('type')
+    if not credit_id or not credit_type:
+        return None
+    return credit_id, credit_type
+
+
+def _index_credits(credits):
+    return {
+        _credit_key(credit): credit
+        for credit in credits
+        if _credit_key(credit)
+    }
+
+
+def _add_actor_credits_to_side_index(side_index, actor_id, credits):
+    for credit in credits:
+        credit_key = _credit_key(credit)
+        if not credit_key:
+            continue
+        side_index.setdefault(credit_key, set()).add(actor_id)
+
+
+def _build_bidirectional_path(meet_actor_id, source_visited, target_visited):
+    source_nodes = _path_from_root(meet_actor_id, source_visited)
+    target_nodes = _path_to_root(meet_actor_id, target_visited)
+
+    steps = []
+    for idx, current in enumerate(source_nodes):
+        if idx < len(source_nodes) - 1:
+            next_credit = source_nodes[idx + 1]['credit']
+        elif len(target_nodes) > 1:
+            next_credit = target_nodes[0]['credit']
+        else:
+            next_credit = None
+        steps.append(_build_step(current['actor'], next_credit))
+
+    for idx in range(1, len(target_nodes)):
+        current = target_nodes[idx]
+        next_credit = current['credit'] if idx < len(target_nodes) - 1 else None
+        steps.append(_build_step(current['actor'], next_credit))
+
+    return steps
+
+
+def _build_path_between_trees(source_actor_id, target_actor_id, bridge_credit, source_visited, target_visited):
+    if source_actor_id == target_actor_id:
+        return _build_bidirectional_path(source_actor_id, source_visited, target_visited)
+
+    source_nodes = _path_from_root(source_actor_id, source_visited)
+    target_nodes = _path_to_root(target_actor_id, target_visited)
+
+    steps = []
+    for idx, current in enumerate(source_nodes):
+        next_credit = source_nodes[idx + 1]['credit'] if idx < len(source_nodes) - 1 else bridge_credit
+        steps.append(_build_step(current['actor'], next_credit))
+
+    for idx, current in enumerate(target_nodes):
+        next_credit = current['credit'] if idx < len(target_nodes) - 1 else None
+        steps.append(_build_step(current['actor'], next_credit))
+
+    return steps
+
+
+def _path_from_root(actor_id, visited):
+    nodes = _path_to_root(actor_id, visited)
+    nodes.reverse()
+    return nodes
+
+
+def _path_to_root(actor_id, visited):
+    nodes = []
+    node = actor_id
+    while node is not None:
+        nodes.append(visited[node])
+        node = visited[node]['parent']
+    return nodes
+
+
+def _combined_depth(actor_id, visited):
+    return visited[SOURCE_SIDE][actor_id]['depth'] + visited[TARGET_SIDE][actor_id]['depth']
+
+
+def _select_side_to_expand(frontiers, visited, max_degrees):
+    candidates = []
+    for side in (SOURCE_SIDE, TARGET_SIDE):
+        frontier = frontiers[side]
+        if not frontier:
+            continue
+        if _frontier_depth(frontier, visited[side]) >= max_degrees:
+            continue
+        candidates.append(side)
+
+    if not candidates:
+        return None
+
+    return min(
+        candidates,
+        key=lambda side: (
+            len(frontiers[side]),
+            _frontier_depth(frontiers[side], visited[side]),
+        ),
+    )
+
+
+def _frontier_depth(frontier, visited):
+    if not frontier:
+        return 0
+    return min(visited[actor_id]['depth'] for actor_id in frontier)
+
+
+def _trim_frontier(frontier, profile, depth):
+    frontier_limit = _limit_for_depth(profile.get('frontier_limits', []), depth)
+    if frontier_limit is None:
+        return frontier
+    return frontier[:frontier_limit]
+
+
 def _limit_for_depth(limits, depth):
+    if not limits:
+        return None
     if depth < len(limits):
         return limits[depth]
     return limits[-1]
@@ -560,9 +706,21 @@ def _sample_frontier_names(frontier, visited, limit=4):
     return names
 
 
+def _visited_count(visited):
+    return len(set(visited[SOURCE_SIDE]) | set(visited[TARGET_SIDE]))
+
+
 def _iter_chunks(items, size):
     for start in range(0, len(items), size):
         yield items[start:start + size]
+
+
+def _other_side(side):
+    return TARGET_SIDE if side == SOURCE_SIDE else SOURCE_SIDE
+
+
+def _side_label(side):
+    return 'origem' if side == SOURCE_SIDE else 'destino'
 
 
 def _emit_progress(progress_callback, payload):
@@ -570,19 +728,27 @@ def _emit_progress(progress_callback, payload):
         progress_callback(payload)
 
 
-def _reconstruct(target_actor_id, visited):
-    nodes = []
-    node = target_actor_id
-    while node is not None:
-        nodes.append(visited[node])
-        node = visited[node]['parent']
-    nodes.reverse()
-
-    steps = []
-    for idx, current in enumerate(nodes):
-        next_credit = nodes[idx + 1]['credit'] if idx < len(nodes) - 1 else None
-        steps.append(_build_step(current['actor'], next_credit))
-    return steps
+def _emit_found(progress_callback, result, visited, frontiers):
+    _emit_progress(
+        progress_callback,
+        {
+            'stage': 'found',
+            'depth': len(result) - 1,
+            'explored_actors': _visited_count(visited),
+            'frontier_size': len(frontiers[SOURCE_SIDE]) + len(frontiers[TARGET_SIDE]),
+            'frontier_sample': (
+                _sample_frontier_names(frontiers[SOURCE_SIDE], visited[SOURCE_SIDE], limit=2)
+                + _sample_frontier_names(frontiers[TARGET_SIDE], visited[TARGET_SIDE], limit=2)
+            ),
+            'message': 'Conexao encontrada.',
+            'history_entry': {
+                'depth': len(result) - 1,
+                'label': f'Conexao em {len(result) - 1} graus',
+                'sample_names': [step['actor']['name'] for step in result[:5]],
+                'discovered_count': len(result),
+            },
+        },
+    )
 
 
 def _build_step(actor, credit):
@@ -593,16 +759,20 @@ def _build_step(actor, credit):
 
 
 def _build_movie(credit):
-    return {
+    movie = {
         'id': credit.get('id'),
         'title': credit.get('title'),
         'year': str(credit.get('year') or ''),
         'poster': credit.get('poster'),
         'type': credit.get('type'),
     }
-
-
-def _credit_window(credits, limit):
-    if limit is None:
-        return credits
-    return credits[:limit]
+    for key in (
+        'series_id',
+        'series_title',
+        'episode_title',
+        'season_number',
+        'episode_number',
+    ):
+        if credit.get(key) is not None:
+            movie[key] = credit.get(key)
+    return movie

@@ -3,6 +3,8 @@ from datetime import datetime, timedelta, timezone
 from threading import Event, Lock, Thread
 from uuid import uuid4
 
+import requests
+
 from .graph import SearchBudgetExceeded, SearchCancelled, find_path
 
 JOBS = {}
@@ -124,9 +126,25 @@ def _run_connection_job(job_id):
                 return
             job['status'] = 'timeout'
             job['updated_at'] = _utc_now()
-            job['error'] = 'A busca profunda excedeu o tempo permitido.'
+            job['error'] = (
+                'Nao deu tempo de fechar essa conexao agora. '
+                'Tente novamente; a segunda busca costuma aproveitar dados em cache.'
+            )
             job['progress']['stage'] = 'timeout'
-            job['progress']['message'] = 'Busca profunda excedeu o tempo permitido.'
+            job['progress']['message'] = job['error']
+    except requests.RequestException:
+        with JOB_LOCK:
+            job = JOBS.get(job_id)
+            if not job:
+                return
+            job['status'] = 'timeout'
+            job['updated_at'] = _utc_now()
+            job['error'] = (
+                'O TMDb demorou para responder. '
+                'Tente novamente em instantes.'
+            )
+            job['progress']['stage'] = 'timeout'
+            job['progress']['message'] = job['error']
     except Exception as exc:
         with JOB_LOCK:
             job = JOBS.get(job_id)
