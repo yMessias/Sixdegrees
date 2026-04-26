@@ -10,6 +10,8 @@ ACTOR_FETCH_WORKERS = 16
 CAST_FETCH_WORKERS = 12
 FRONTIER_SCAN_BATCH = 8
 CAST_EXPANSION_BATCH = 6
+TIMELINE_MAX_DEGREES = 3
+TIMELINE_MAX_WORKS = 8
 
 SOURCE_SIDE = 'source'
 TARGET_SIDE = 'target'
@@ -80,7 +82,7 @@ def find_path(
                 'message': 'Os dois nomes apontam para a mesma pessoa.',
             },
         )
-        return result
+        return _enrich_short_path_timeline(result)
 
     credit_indexes = {
         actor_a_id: _index_credits(credits_a),
@@ -125,7 +127,7 @@ def find_path(
                 },
             },
         )
-        return result
+        return _enrich_short_path_timeline(result)
 
     visited = {
         SOURCE_SIDE: {
@@ -228,6 +230,7 @@ def find_path(
                 max_degrees=max_degrees,
             )
             if direct_result:
+                direct_result = _enrich_short_path_timeline(direct_result)
                 _emit_found(progress_callback, direct_result, visited, frontiers)
                 return direct_result
 
@@ -276,6 +279,7 @@ def find_path(
                                 visited[SOURCE_SIDE],
                                 visited[TARGET_SIDE],
                             )
+                            result = _enrich_short_path_timeline(result)
                             _emit_found(progress_callback, result, visited, frontiers)
                             return result
 
@@ -483,6 +487,192 @@ def _find_shared_credit(actor_id, credits, target_actor_id, target_index):
             'poster': credit.get('poster') or target.get('poster'),
         }
     return None
+
+
+def _enrich_short_path_timeline(path):
+    degrees = len(path) - 1
+    if degrees <= 0 or degrees > TIMELINE_MAX_DEGREES:
+        return path
+
+    for idx in range(degrees):
+        actor_left = path[idx].get('actor') or {}
+        actor_right = path[idx + 1].get('actor') or {}
+        primary_work = path[idx].get('movie')
+
+        try:
+            timeline = _find_shared_works(
+                actor_left.get('id'),
+                actor_right.get('id'),
+                primary_work,
+            )
+        except requests.RequestException:
+            timeline = []
+
+        if not timeline and primary_work:
+            timeline = [primary_work]
+
+        if timeline:
+            path[idx]['timeline_total'] = len(timeline)
+            path[idx]['timeline'] = _limit_timeline(timeline, primary_work)
+
+    return path
+
+
+def _find_shared_works(actor_a_id, actor_b_id, primary_work=None):
+    if not actor_a_id or not actor_b_id:
+        return []
+
+    credits_a = tmdb.get_actor_all_credits(actor_a_id)
+    credits_b = tmdb.get_actor_all_credits(actor_b_id)
+    index_b = _index_credits(credits_b)
+    shared = []
+    seen = set()
+
+    _add_timeline_work(shared, seen, primary_work)
+
+    for credit in credits_a:
+        target = index_b.get(_credit_key(credit))
+        if not target:
+            continue
+
+        if credit.get('type') == 'tv':
+            try:
+                works = tmdb.find_shared_tv_episodes(actor_a_id, credit, actor_b_id, target)
+            except requests.RequestException:
+                continue
+            if not works:
+                continue
+            _add_timeline_work(
+                shared,
+                seen,
+                _build_tv_series_timeline_work(credit, target, works),
+            )
+            continue
+        else:
+            work = {
+                'id': credit.get('id'),
+                'type': 'movie',
+                'title': credit.get('title') or target.get('title'),
+                'year': credit.get('year') or target.get('year'),
+                'poster': credit.get('poster') or target.get('poster'),
+            }
+
+        _add_timeline_work(shared, seen, _build_movie(work))
+
+    return sorted(shared, key=_timeline_sort_key)
+
+
+def _add_timeline_work(shared, seen, work):
+    if not work:
+        return
+
+    normalized = _build_timeline_work(work)
+    work_key = _timeline_work_key(normalized)
+    if not work_key:
+        return
+
+    if work_key in seen:
+        for existing in shared:
+            if _timeline_work_key(existing) == work_key:
+                _merge_timeline_work(existing, normalized)
+                break
+        return
+
+    seen.add(work_key)
+    shared.append(normalized)
+
+
+def _build_timeline_work(work):
+    if work.get('type') == 'tv':
+        series_id = work.get('series_id') or work.get('id')
+        series_title = work.get('series_title') or work.get('title')
+        timeline_work = {
+            'id': series_id,
+            'type': 'tv',
+            'title': series_title,
+            'year': str(work.get('year') or ''),
+            'poster': work.get('poster'),
+            'series_id': series_id,
+            'series_title': series_title,
+        }
+        if work.get('shared_episode_count') is not None:
+            timeline_work['shared_episode_count'] = work.get('shared_episode_count')
+        return timeline_work
+
+    return _build_movie(work)
+
+
+def _build_tv_series_timeline_work(credit, target, episode_works):
+    first_episode = episode_works[0] if episode_works else {}
+    series_title = (
+        first_episode.get('series_title')
+        or credit.get('title')
+        or target.get('title')
+        or first_episode.get('title')
+    )
+    return {
+        'id': credit.get('id') or target.get('id') or first_episode.get('series_id'),
+        'type': 'tv',
+        'title': series_title,
+        'year': credit.get('year') or target.get('year') or first_episode.get('year'),
+        'poster': credit.get('poster') or target.get('poster') or first_episode.get('poster'),
+        'series_id': credit.get('id') or target.get('id') or first_episode.get('series_id'),
+        'series_title': series_title,
+        'shared_episode_count': len(episode_works),
+    }
+
+
+def _merge_timeline_work(existing, incoming):
+    for key in ('title', 'year', 'poster', 'series_id', 'series_title'):
+        if not existing.get(key) and incoming.get(key):
+            existing[key] = incoming.get(key)
+
+    incoming_episode_count = incoming.get('shared_episode_count')
+    if incoming_episode_count is not None:
+        existing['shared_episode_count'] = max(
+            existing.get('shared_episode_count') or 0,
+            incoming_episode_count,
+        )
+
+
+def _limit_timeline(timeline, primary_work):
+    if len(timeline) <= TIMELINE_MAX_WORKS:
+        return timeline
+
+    limited = timeline[:TIMELINE_MAX_WORKS]
+    primary_key = _timeline_work_key(primary_work)
+    if primary_key and primary_key not in {_timeline_work_key(work) for work in limited}:
+        limited[-1] = _build_timeline_work(primary_work)
+        limited = sorted(limited, key=_timeline_sort_key)
+    return limited
+
+
+def _timeline_work_key(work):
+    if not work:
+        return None
+
+    if work.get('type') == 'tv':
+        return (
+            'tv',
+            work.get('series_id') or work.get('id'),
+        )
+    return work.get('type'), work.get('id')
+
+
+def _timeline_sort_key(work):
+    year = _timeline_year(work)
+    return (
+        year if year else 9999,
+        (work.get('title') or '').lower(),
+        work.get('id') or 0,
+    )
+
+
+def _timeline_year(work):
+    try:
+        return int(work.get('year') or 0)
+    except (TypeError, ValueError):
+        return 0
 
 
 def _safe_get_actor_credits(actor_id, credit_limit):

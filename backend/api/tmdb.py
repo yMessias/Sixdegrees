@@ -250,20 +250,33 @@ def get_tv_episode_cast(actor_id, credit, cast_limit=DEFAULT_CAST_LIMIT, episode
 
 
 def find_shared_tv_episode(actor_a_id, credit_a, actor_b_id, credit_b):
+    episodes = find_shared_tv_episodes(actor_a_id, credit_a, actor_b_id, credit_b, limit=1)
+    return episodes[0] if episodes else None
+
+
+def find_shared_tv_episodes(actor_a_id, credit_a, actor_b_id, credit_b, limit=None):
     if not credit_a.get('credit_id') or not credit_b.get('credit_id'):
-        return None
+        return []
 
     series_id = credit_a.get('id')
     if series_id != credit_b.get('id'):
-        return None
+        return []
 
     episodes_b = {
         episode['id']: episode
         for episode in get_tv_credit_episode_refs(series_id, credit_b.get('credit_id'), None)
     }
-    for episode in get_tv_credit_episode_refs(series_id, credit_a.get('credit_id'), None):
-        if episode['id'] not in episodes_b:
-            continue
+    episodes_a = {
+        episode['id']: episode
+        for episode in get_tv_credit_episode_refs(series_id, credit_a.get('credit_id'), None)
+    }
+
+    shared_refs = _shared_episode_refs(episodes_a, episodes_b)
+    if not shared_refs:
+        return []
+
+    shared = []
+    for episode in shared_refs:
         if not _episode_has_actors(
             series_id,
             episode['season_number'],
@@ -272,8 +285,28 @@ def find_shared_tv_episode(actor_a_id, credit_a, actor_b_id, credit_b):
             actor_b_id,
         ):
             continue
-        return _build_tv_episode_edge(_merge_series_credit(credit_a, credit_b), episode)
-    return None
+        shared.append(_build_tv_episode_edge(_merge_series_credit(credit_a, credit_b), episode))
+        if limit and len(shared) >= limit:
+            return shared
+    return shared
+
+
+def _shared_episode_refs(episodes_a, episodes_b):
+    if episodes_a and episodes_b:
+        return [
+            episodes_a[episode_id]
+            for episode_id in episodes_a
+            if episode_id in episodes_b
+        ]
+
+    # Some regular TV credits are exposed by TMDb only at season level for one
+    # actor. If the other actor has precise episode refs, use those refs and
+    # still verify the actual episode cast before creating a connection.
+    if episodes_a:
+        return list(episodes_a.values())
+    if episodes_b:
+        return list(episodes_b.values())
+    return []
 
 
 @lru_cache(maxsize=4096)

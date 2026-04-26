@@ -117,12 +117,17 @@ def ai_insight(request):
         actor_left  = path[i]['actor']['name']
         actor_right = path[i + 1]['actor']['name']
         movie       = path[i].get('movie')
-        if movie:
-            title = movie['title']
-            year  = movie.get('year', '')
+        timeline = path[i].get('timeline') or []
+        works = timeline if len(timeline) > 1 else ([movie] if movie else [])
+
+        for work in works:
+            if not work:
+                continue
+            title = work['title']
+            year  = work.get('year', '')
             label = f"{title} ({year})" if year else title
             connections.append({
-                'key':         f'{actor_left_id}:{movie["id"]}:{actor_right_id}',
+                'key':         f'{actor_left_id}:{work["id"]}:{actor_right_id}',
                 'label':       f"{actor_left} e {actor_right} em {label}",
                 'actor_left':  actor_left,
                 'actor_right': actor_right,
@@ -140,6 +145,8 @@ def ai_insight(request):
     prompt = f"""Você é um especialista em cinema e televisão. As seguintes conexões foram encontradas:
 
 {connections_text}
+
+A lista tem {len(connections)} itens. O array "insights" deve ter exatamente {len(connections)} objetos, um para cada key acima.
 
 Para CADA conexão acima, escreva uma curiosidade interessante que mencione AMBOS os atores e o que eles fizeram juntos nessa obra. Seja específico: personagens, cenas, bastidores ou impacto cultural.
 Use exatamente a chave de conexão correspondente em "connection_key" para cada item.
@@ -165,7 +172,7 @@ Responda SOMENTE com JSON válido, sem markdown, neste formato exato:
             },
             json={
                 'model': 'llama-3.3-70b-versatile',
-                'max_tokens': 1200,
+                'max_tokens': 2200,
                 'messages': [{'role': 'user', 'content': prompt}],
             },
             timeout=30,
@@ -174,7 +181,40 @@ Responda SOMENTE com JSON válido, sem markdown, neste formato exato:
         content = res.json()['choices'][0]['message']['content']
         content = content.replace('```json', '').replace('```', '').strip()
         data = json.loads(content)
-        return Response(data)
+        return Response(_ensure_connection_insights(data, connections))
 
     except Exception as e:
         return Response({'error': str(e)}, status=500)
+
+
+def _ensure_connection_insights(data, connections):
+    if not isinstance(data, dict):
+        data = {}
+
+    insights = data.get('insights')
+    if not isinstance(insights, list):
+        insights = []
+
+    seen = {
+        str(item.get('connection_key'))
+        for item in insights
+        if isinstance(item, dict) and item.get('connection_key') is not None
+    }
+
+    for connection in connections:
+        if connection['key'] in seen:
+            continue
+
+        insights.append({
+            'connection_key': connection['key'],
+            'connection': connection['label'],
+            'curiosity': (
+                f"{connection['actor_left']} e {connection['actor_right']} aparecem juntos em "
+                f"{connection['movie']}, uma das obras da linha do tempo compartilhada entre eles."
+            ),
+        })
+
+    data['insights'] = insights
+    if not data.get('fun_fact'):
+        data['fun_fact'] = 'Essa cadeia destaca como parcerias repetidas criam atalhos fortes entre atores.'
+    return data

@@ -1,6 +1,9 @@
 .graph-wrap {
   flex: 1;
   position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   overflow: hidden;
   padding: 22px 28px 44px;
   background:
@@ -36,10 +39,12 @@
 }
 
 .graph-stage {
+  flex: 1;
   position: relative;
-  min-height: 460px;
+  min-height: 0;
   max-width: 100%;
   margin: 0 auto;
+  width: 100%;
   border: 1px solid rgba(228,199,131,0.14);
   border-radius: 8px;
   background:
@@ -64,6 +69,19 @@
   stroke-width: 3.8;
 }
 
+.graph-timeline-link {
+  stroke: rgba(125,191,175,0.7);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: stroke 0.18s ease, stroke-width 0.18s ease, opacity 0.18s ease;
+}
+
+.graph-timeline-link.active {
+  stroke: rgba(156,232,211,0.96);
+  stroke-width: 4;
+}
+
 .graph-actor-group {
   cursor: default;
 }
@@ -76,6 +94,7 @@
 
 .graph-edge-card {
   position: absolute;
+  box-sizing: border-box;
   transform: translate(-50%, -50%);
   display: flex;
   align-items: center;
@@ -91,6 +110,129 @@
   text-align: left;
   pointer-events: auto;
   transition: border-color 0.16s ease, background 0.16s ease, transform 0.16s ease;
+}
+
+.graph-timeline-cards {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.graph-timeline-card {
+  position: absolute;
+  box-sizing: border-box;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  border: 1px solid rgba(125,191,175,0.34);
+  border-radius: 8px;
+  background: rgba(7,13,13,0.9);
+  color: rgba(238,232,220,0.88);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  pointer-events: auto;
+  box-shadow: 0 12px 28px rgba(0,0,0,0.32);
+  transition: border-color 0.16s ease, background 0.16s ease, transform 0.16s ease;
+}
+
+.graph-timeline-card:hover,
+.graph-timeline-card:focus-visible,
+.graph-timeline-card.active {
+  border-color: rgba(156,232,211,0.78);
+  background: rgba(8,17,17,0.96);
+  outline: none;
+}
+
+.graph-timeline-poster,
+.graph-timeline-placeholder {
+  width: 38px;
+  height: 52px;
+  flex: 0 0 38px;
+  border-radius: 6px;
+}
+
+.graph-timeline-poster {
+  object-fit: cover;
+  filter: saturate(1.38) contrast(1.12) brightness(1.16);
+  box-shadow: 0 0 0 1px rgba(238,232,220,0.34);
+}
+
+.graph-timeline-placeholder {
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(125,191,175,0.28);
+  background: rgba(125,191,175,0.08);
+  color: rgba(125,191,175,0.82);
+  font-family: 'DM Mono', monospace;
+  font-size: 7px;
+  text-transform: uppercase;
+}
+
+.graph-timeline-copy {
+  min-width: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.graph-timeline-year {
+  font-family: 'DM Mono', monospace;
+  font-size: 8px;
+  font-weight: 800;
+  color: var(--theme-secondary);
+}
+
+.graph-timeline-title {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.2;
+  color: rgba(238,232,220,0.9);
+}
+
+.graph-timeline-kind {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 2px 6px;
+  border: 1px solid rgba(125,191,175,0.28);
+  border-radius: 4px;
+  background: rgba(125,191,175,0.1);
+  font-family: 'DM Mono', monospace;
+  font-size: 7px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--theme-secondary);
+}
+
+.graph-timeline-meta {
+  display: inline-flex;
+  align-self: flex-start;
+  font-family: 'DM Mono', monospace;
+  font-size: 7px;
+  color: rgba(216,183,109,0.9);
+  text-transform: uppercase;
+}
+
+.graph-timeline-more {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  padding: 2px 6px;
+  border: 1px solid rgba(125,191,175,0.24);
+  border-radius: 999px;
+  background: rgba(7,13,13,0.82);
+  color: rgba(125,191,175,0.86);
+  font-family: 'DM Mono', monospace;
+  font-size: 8px;
+  pointer-events: none;
 }
 
 .graph-edge-card:hover,
@@ -208,13 +350,14 @@
 
 .graph-tooltip {
   position: absolute;
+  box-sizing: border-box;
   background: rgba(10,12,13,0.94);
   border: 1px solid rgba(228,199,131,0.24);
   border-radius: 8px;
   padding: 10px;
   display: flex;
   gap: 12px;
-  max-width: 330px;
+  max-width: 360px;
   pointer-events: none;
   z-index: 50;
   animation: fadeIn 0.12s ease;
@@ -236,6 +379,7 @@
   flex-direction: column;
   gap: 6px;
   justify-content: center;
+  min-width: 0;
 }
 
 .graph-tooltip-title {
@@ -277,13 +421,56 @@
   vertical-align: middle;
 }
 
+.graph-tooltip-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 250px;
+}
+
+.graph-tooltip-timeitem {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 9px;
+  align-items: baseline;
+}
+
+.graph-tooltip-year {
+  font-family: 'DM Mono', monospace;
+  font-size: 0.66rem;
+  color: var(--theme-primary);
+}
+
+.graph-tooltip-work {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.76rem;
+  color: rgba(238,232,220,0.84);
+}
+
+.graph-tooltip-meta {
+  margin-left: 7px;
+  font-family: 'DM Mono', monospace;
+  font-size: 0.58rem;
+  color: rgba(125,191,175,0.86);
+  text-transform: uppercase;
+}
+
+.graph-tooltip-more {
+  font-family: 'DM Mono', monospace;
+  font-size: 0.62rem;
+  color: rgba(238,232,220,0.48);
+  text-transform: uppercase;
+}
+
 @media (max-width: 960px) {
   .graph-wrap {
     padding: 20px 16px 44px;
   }
 
   .graph-stage {
-    min-height: 540px;
-    overflow: auto;
+    min-height: 0;
+    overflow: hidden;
   }
 }
