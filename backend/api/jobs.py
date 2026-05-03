@@ -103,13 +103,13 @@ def _run_connection_job(job_id):
             if path is None:
                 job['status'] = 'not_found'
                 job['progress']['stage'] = 'not_found'
-                job['progress']['message'] = f'Nenhuma conexao encontrada em ate {max_degrees} graus.'
+                job['progress']['message'] = f'Nenhuma conexão encontrada em até {max_degrees} graus.'
             else:
                 job['status'] = 'completed'
                 job['path'] = path
                 job['degrees'] = len(path) - 1
                 job['progress']['stage'] = 'found'
-                job['progress']['message'] = 'Conexao encontrada.'
+                job['progress']['message'] = 'Conexão encontrada.'
     except SearchCancelled:
         with JOB_LOCK:
             job = JOBS.get(job_id)
@@ -127,7 +127,7 @@ def _run_connection_job(job_id):
             job['status'] = 'timeout'
             job['updated_at'] = _utc_now()
             job['error'] = (
-                'Nao deu tempo de fechar essa conexao agora. '
+                'Não deu tempo de fechar essa conexão agora. '
                 'Tente novamente; a segunda busca costuma aproveitar dados em cache.'
             )
             job['progress']['stage'] = 'timeout'

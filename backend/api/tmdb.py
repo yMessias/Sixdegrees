@@ -447,7 +447,7 @@ def _build_movie_edge(credit):
 
 
 def _build_tv_episode_edge(series_credit, episode):
-    series_title = series_credit.get('title') or series_credit.get('name') or 'Serie'
+    series_title = series_credit.get('title') or series_credit.get('name') or 'Série'
     episode_title = episode.get('name') or ''
     season_number = episode.get('season_number')
     episode_number = episode.get('episode_number')

@@ -145,7 +145,7 @@ function PathGraph({ path, insights, insightState, selection }) {
 
   function mediaTypeLabel(edge) {
     if ((edge.timelineTotal || 0) > 1) return 'linha do tempo'
-    return singleDisplayWork(edge)?.type === 'tv' ? 'serie' : 'filme'
+    return singleDisplayWork(edge)?.type === 'tv' ? 'série' : 'filme'
   }
 
   function showEdgeTip(ev, edge, insight, work = null) {
@@ -432,7 +432,7 @@ function PathGraph({ path, insights, insightState, selection }) {
                     width: card.width,
                     minHeight: card.height,
                   }}
-                  aria-label={`${card.work.year || 'Ano desconhecido'} - ${card.work.title || 'Obra sem titulo'}`}
+                  aria-label={`${card.work.year || 'Ano desconhecido'} - ${card.work.title || 'Obra sem título'}`}
                   onMouseEnter={ev => showEdgeTip(ev, visual.edgeWithIndex, card.ins, card.work)}
                   onMouseMove={moveTip}
                   onMouseLeave={() => { setActiveEdge(null); setTip(null) }}
@@ -451,19 +451,19 @@ function PathGraph({ path, insights, insightState, selection }) {
                   {card.work.poster ? (
                     <img
                       src={card.work.poster}
-                      alt={card.work.title || 'Obra sem titulo'}
+                      alt={card.work.title || 'Obra sem título'}
                       className="graph-timeline-poster"
                       draggable="false"
                     />
                   ) : (
                     <span className="graph-timeline-placeholder">
-                      {card.work.type === 'tv' ? 'Serie' : 'Filme'}
+                      {card.work.type === 'tv' ? 'Série' : 'Filme'}
                     </span>
                   )}
                   <span className="graph-timeline-copy">
                     <span className="graph-timeline-year">{card.work.year || '----'}</span>
                     <span className="graph-timeline-title">
-                      {card.work.title || 'Obra sem titulo'}
+                      {card.work.title || 'Obra sem título'}
                     </span>
                     <span className="graph-timeline-kind">{mediaTypeLabel({ movie: card.work, timelineTotal: 0, timeline: [] })}</span>
                     {workMeta(card.work) && (
@@ -515,7 +515,7 @@ function PathGraph({ path, insights, insightState, selection }) {
                     <div className="graph-tooltip-timeitem" key={workKey(work, workIndex)}>
                       <span className="graph-tooltip-year">{work.year || '----'}</span>
                       <span className="graph-tooltip-work">
-                        {work.title || 'Obra sem titulo'}
+                        {work.title || 'Obra sem título'}
                         {workMeta(work) && (
                           <span className="graph-tooltip-meta">{workMeta(work)}</span>
                         )}
@@ -538,7 +538,7 @@ function PathGraph({ path, insights, insightState, selection }) {
                   {tip.movie.title}
                   {tip.movie.year ? ` (${tip.movie.year})` : ''}
                   {tip.movie.type === 'tv' && (
-                    <span className="graph-tooltip-badge">serie</span>
+                    <span className="graph-tooltip-badge">série</span>
                   )}
                 </div>
                 <div className="graph-tooltip-actors">
@@ -546,7 +546,7 @@ function PathGraph({ path, insights, insightState, selection }) {
                 </div>
                 {workMeta(tip.movie) && (
                   <div className="graph-tooltip-text muted">
-                    {workMeta(tip.movie)} em comum nessa serie.
+                    {workMeta(tip.movie)} em comum nessa série.
                   </div>
                 )}
                 {tip.insight ? (
@@ -555,7 +555,7 @@ function PathGraph({ path, insights, insightState, selection }) {
                   <div className="graph-tooltip-text muted">Carregando curiosidade...</div>
                 ) : insightState === 'error' ? (
                   <div className="graph-tooltip-text muted">
-                    O grafo ficou pronto, mas a curiosidade dessa conexao nao voltou agora.
+                    O grafo ficou pronto, mas a curiosidade dessa conexão não voltou agora.
                   </div>
                 ) : (
                   <div className="graph-tooltip-text muted">
@@ -704,9 +704,9 @@ function getStepTimeline(step) {
 }
 
 function workLabel(work) {
-  if (!work) return 'Conexao'
+  if (!work) return 'Conexão'
 
-  const title = work.title || 'Conexao'
+  const title = work.title || 'Conexão'
   return work.year ? `${title} (${work.year})` : title
 }
 

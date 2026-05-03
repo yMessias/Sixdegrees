@@ -14,7 +14,7 @@ const POLL_INTERVAL_MS = 1200
 
 const APP_CONFIG = {
   logo: ['Six', 'Degrees'],
-  loading: 'Buscando conexao completa...',
+  loading: 'Buscando conexão completa...',
   queued: 'Iniciando busca profunda...',
   pairSeparator: '->',
   maxDegrees: 6,
@@ -121,7 +121,7 @@ function Home() {
       }
 
       if (job.status === 'not_found') {
-        setError(job.progress?.message || 'Conexao nao encontrada.')
+        setError(job.progress?.message || 'Conexão não encontrada.')
         setState('error')
         return
       }
@@ -199,7 +199,7 @@ function Home() {
             <div className="home-degrees">
               <span className="home-degrees-num">{degrees}</span>
               <span className="home-degrees-label">
-                {degrees === 1 ? 'grau' : 'graus'} de separacao
+                {degrees === 1 ? 'grau' : 'graus'} de separação
               </span>
             </div>
             <div className="home-meta-pills">
@@ -232,7 +232,7 @@ function Home() {
           </div>
 
           <div className="home-progress-line">
-            {progress?.message || 'Explorando conexoes...'}
+            {progress?.message || 'Explorando conexões...'}
           </div>
 
           <button className="home-back-btn" onClick={reset}>Cancelar busca</button>

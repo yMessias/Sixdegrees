@@ -91,7 +91,7 @@ def start_connection_search(request):
 def connection_search_status(request, job_id):
     job = get_job(job_id)
     if not job:
-        return Response({'error': 'Busca nao encontrada'}, status=status.HTTP_404_NOT_FOUND)
+        return Response({'error': 'Busca não encontrada'}, status=status.HTTP_404_NOT_FOUND)
     return Response(job)
 
 
@@ -99,7 +99,7 @@ def connection_search_status(request, job_id):
 def cancel_connection_search(request, job_id):
     job = cancel_job(job_id)
     if not job:
-        return Response({'error': 'Busca nao encontrada'}, status=status.HTTP_404_NOT_FOUND)
+        return Response({'error': 'Busca não encontrada'}, status=status.HTTP_404_NOT_FOUND)
     return Response(job)
 
 

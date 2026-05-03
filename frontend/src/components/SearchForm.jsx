@@ -7,7 +7,7 @@ const FORM_CONFIG = {
   labels: ['Ator A', 'Ator B'],
   placeholder: 'Nome do ator...',
   warning: 'Escolha dois atores diferentes para montar a cadeia.',
-  button: 'Buscar conexao no cinema',
+  button: 'Buscar conexão no cinema',
   loading: 'Buscando no cinema...',
   search: searchActor,
 }

@@ -118,10 +118,10 @@ def find_path(
                 'explored_actors': 2,
                 'frontier_size': 2,
                 'frontier_sample': [actor_a['name'], actor_b['name']],
-                'message': 'Conexao direta encontrada.',
+                'message': 'Conexão direta encontrada.',
                 'history_entry': {
                     'depth': 1,
-                    'label': 'Conexao direta',
+                    'label': 'Conexão direta',
                     'sample_names': [actor_a['name'], actor_b['name']],
                     'discovered_count': 2,
                 },
@@ -306,7 +306,7 @@ def find_path(
                 'explored_actors': _visited_count(visited),
                 'frontier_size': len(next_frontier),
                 'frontier_sample': _sample_frontier_names(next_frontier, visited[side]),
-                'message': f'{_side_label(side).capitalize()} grau {current_depth + 1} concluido.',
+                'message': f'{_side_label(side).capitalize()} grau {current_depth + 1} concluído.',
                 'history_entry': {
                     'depth': current_depth + 1,
                     'label': f'{_side_label(side).capitalize()} grau {current_depth + 1}',
@@ -326,7 +326,7 @@ def find_path(
             'explored_actors': _visited_count(visited),
             'frontier_size': 0,
             'frontier_sample': [],
-            'message': f'Nenhuma conexao encontrada em ate {max_degrees} graus.',
+            'message': f'Nenhuma conexão encontrada em até {max_degrees} graus.',
         },
     )
     return None
@@ -930,10 +930,10 @@ def _emit_found(progress_callback, result, visited, frontiers):
                 _sample_frontier_names(frontiers[SOURCE_SIDE], visited[SOURCE_SIDE], limit=2)
                 + _sample_frontier_names(frontiers[TARGET_SIDE], visited[TARGET_SIDE], limit=2)
             ),
-            'message': 'Conexao encontrada.',
+            'message': 'Conexão encontrada.',
             'history_entry': {
                 'depth': len(result) - 1,
-                'label': f'Conexao em {len(result) - 1} graus',
+                'label': f'Conexão em {len(result) - 1} graus',
                 'sample_names': [step['actor']['name'] for step in result[:5]],
                 'discovered_count': len(result),
             },

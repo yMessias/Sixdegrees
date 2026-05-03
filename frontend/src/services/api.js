@@ -14,7 +14,7 @@ export async function findConnection(actorAId, actorBId, signal) {
     { signal },
   )
   const data = await res.json()
-  if (!res.ok) throw new Error(data.error || 'Erro ao buscar conexao')
+  if (!res.ok) throw new Error(data.error || 'Erro ao buscar conexão')
   return data
 }
 
@@ -53,6 +53,6 @@ export async function cancelConnectionJob(jobId) {
   try {
     await fetch(`${BASE}/connect/cancel/${jobId}/`, { method: 'POST' })
   } catch {
-    // Melhor esforco; ignoramos falha ao cancelar no backend.
+    // Melhor esforço; ignoramos falha ao cancelar no backend.
   }
 }

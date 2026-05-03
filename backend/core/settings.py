@@ -17,7 +17,7 @@ SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'dev-secret-key-troque-em-producao')
 
 debug_env = os.getenv('DEBUG')
 if debug_env is None:
-    # Por padrÃ£o, DEBUG=False em ambiente Render (RENDER Ã© definido lÃ¡).
+    # Por padrão, DEBUG=False em ambiente Render (RENDER é definido lá).
     DEBUG = os.getenv('RENDER') is None
 else:
     DEBUG = debug_env.strip().lower() in {'1', 'true', 'yes', 'y', 'on'}
