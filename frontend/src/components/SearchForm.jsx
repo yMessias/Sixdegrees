@@ -7,6 +7,7 @@ const FORM_CONFIG = {
   labels: ['Ator A', 'Ator B'],
   placeholder: 'Nome do ator...',
   warning: 'Escolha dois atores diferentes para montar a cadeia.',
+  emptyResults: 'Nenhum ator encontrado.',
   button: 'Buscar conexão no cinema',
   loading: 'Buscando no cinema...',
   search: searchActor,
@@ -18,6 +19,7 @@ function EntityInput({ label, value, onChange, config }) {
   const [loading, setLoading] = useState(false)
   const [open, setOpen] = useState(false)
   const [error, setError] = useState(null)
+  const [searchedTerm, setSearchedTerm] = useState('')
   const debounceRef = useRef(null)
   const wrapRef = useRef(null)
   const abortRef = useRef(null)
@@ -36,8 +38,14 @@ function EntityInput({ label, value, onChange, config }) {
       setOpen(false)
       setLoading(false)
       setError(null)
+      setSearchedTerm('')
       return
     }
+
+    setResults([])
+    setOpen(false)
+    setError(null)
+    setSearchedTerm('')
 
     debounceRef.current = setTimeout(async () => {
       const controller = new AbortController()
@@ -47,12 +55,14 @@ function EntityInput({ label, value, onChange, config }) {
       try {
         const data = await config.search(term, controller.signal)
         setResults(data)
-        setOpen(data.length > 0)
+        setSearchedTerm(term)
+        setOpen(true)
       } catch (err) {
         if (err.name !== 'AbortError') {
           setResults([])
           setOpen(false)
           setError(err.message)
+          setSearchedTerm('')
         }
       } finally {
         if (!controller.signal.aborted) {
@@ -80,8 +90,17 @@ function EntityInput({ label, value, onChange, config }) {
     setResults([])
     setOpen(false)
     setError(null)
+    setSearchedTerm('')
     onChange(entity)
   }
+
+  const showEmptyState = (
+    open
+    && !loading
+    && !error
+    && results.length === 0
+    && searchedTerm === query.trim()
+  )
 
   return (
     <div className="actor-input-wrap" ref={wrapRef}>
@@ -106,7 +125,7 @@ function EntityInput({ label, value, onChange, config }) {
 
       {error && <div className="actor-input-error">{error}</div>}
 
-      {open && results.length > 0 && (
+      {open && (results.length > 0 || showEmptyState) && (
         <ul className="actor-dropdown">
           {results.map(entity => (
             <li key={entity.id} className="actor-option" onMouseDown={() => select(entity)}>
@@ -122,6 +141,11 @@ function EntityInput({ label, value, onChange, config }) {
               </div>
             </li>
           ))}
+          {showEmptyState && (
+            <li className="actor-option actor-option-empty">
+              {config.emptyResults}
+            </li>
+          )}
         </ul>
       )}
     </div>

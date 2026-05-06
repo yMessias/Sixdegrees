@@ -149,6 +149,16 @@
 
 .actor-option:hover { background: var(--theme-primary-soft); }
 
+.actor-option-empty {
+  cursor: default;
+  color: var(--theme-muted);
+  font-size: 0.72rem;
+  justify-content: center;
+  text-align: center;
+}
+
+.actor-option-empty:hover { background: transparent; }
+
 .actor-option-photo {
   width: 40px;
   height: 40px;
