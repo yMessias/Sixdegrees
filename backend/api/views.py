@@ -8,6 +8,9 @@ from . import tmdb
 from .graph import SearchBudgetExceeded, find_path
 from .jobs import cancel_job, get_job, start_connection_job
 
+MISSING_ACTOR_IDS_ERROR = 'Informe actor_a e actor_b'
+INVALID_ACTOR_IDS_ERROR = 'IDs de atores inválidos. Use números inteiros positivos.'
+
 
 @api_view(['GET'])
 def health(_request):
@@ -42,14 +45,12 @@ def find_connection(request):
     actor_a = request.GET.get('actor_a')
     actor_b = request.GET.get('actor_b')
 
-    if not actor_a or not actor_b:
-        return Response(
-            {'error': 'Informe actor_a e actor_b'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
+    actor_ids, error_response = _parse_actor_ids(actor_a, actor_b)
+    if error_response:
+        return error_response
 
     try:
-        path = find_path(int(actor_a), int(actor_b))
+        path = find_path(*actor_ids)
     except SearchBudgetExceeded:
         return Response(
             {'error': 'Essa conexão demorou demais para o modo rápido. Tente outro par de atores.'},
@@ -77,13 +78,11 @@ def start_connection_search(request):
     actor_a = request.data.get('actor_a')
     actor_b = request.data.get('actor_b')
 
-    if not actor_a or not actor_b:
-        return Response(
-            {'error': 'Informe actor_a e actor_b'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
+    actor_ids, error_response = _parse_actor_ids(actor_a, actor_b)
+    if error_response:
+        return error_response
 
-    job = start_connection_job(int(actor_a), int(actor_b))
+    job = start_connection_job(*actor_ids)
     return Response(job, status=status.HTTP_202_ACCEPTED)
 
 
@@ -101,6 +100,45 @@ def cancel_connection_search(request, job_id):
     if not job:
         return Response({'error': 'Busca não encontrada'}, status=status.HTTP_404_NOT_FOUND)
     return Response(job)
+
+
+def _parse_actor_ids(actor_a, actor_b):
+    if _is_missing_actor_id(actor_a) or _is_missing_actor_id(actor_b):
+        return None, Response(
+            {'error': MISSING_ACTOR_IDS_ERROR},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        actor_ids = (_parse_positive_int(actor_a), _parse_positive_int(actor_b))
+    except ValueError:
+        return None, Response(
+            {'error': INVALID_ACTOR_IDS_ERROR},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    return actor_ids, None
+
+
+def _is_missing_actor_id(value):
+    return value is None or (isinstance(value, str) and value.strip() == '')
+
+
+def _parse_positive_int(value):
+    if isinstance(value, bool):
+        raise ValueError
+
+    if isinstance(value, int):
+        parsed = value
+    elif isinstance(value, str) and value.strip().isdigit():
+        parsed = int(value)
+    else:
+        raise ValueError
+
+    if parsed <= 0:
+        raise ValueError
+
+    return parsed
 
 
 @api_view(['POST'])
