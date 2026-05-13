@@ -16,6 +16,12 @@ Descubra como dois atores se conectam por filmes e séries em comum. O projeto c
 - Frontend: React, Vite e CSS modular por componente.
 - Infra local: Docker Compose com serviços separados para backend e frontend.
 
+## Estrutura do projeto
+
+- `backend/` - API Django, integração com TMDB/Groq e lógica de busca das conexões.
+- `frontend/` - aplicação React com a tela de busca e visualização dos graus de separação.
+- `docker-compose.yml` - orquestra backend e frontend para execução local em containers.
+
 ## Pré-requisitos
 
 - Python 3.11+.
