@@ -66,3 +66,67 @@ class ConnectionValidationTests(SimpleTestCase):
         self.assertEqual(response.status_code, 202)
         self.assertEqual(response.data['id'], 'job-1')
         start_job.assert_called_once_with(1, 2)
+
+
+class SearchActorTests(SimpleTestCase):
+    def setUp(self):
+        self.factory = APIRequestFactory()
+
+    @patch('api.views.tmdb.search_actor')
+    def test_search_actor_ignores_short_queries(self, search_actor):
+        request = self.factory.get('/api/search/', {'q': 'a'})
+
+        response = views.search_actor(request)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, [])
+        search_actor.assert_not_called()
+
+    @patch('api.views.tmdb.search_actor')
+    def test_search_actor_returns_only_acting_results(self, search_actor):
+        search_actor.return_value = [
+            {
+                'id': 1,
+                'name': 'Ator A',
+                'profile_path': '/ator-a.jpg',
+                'known_for_department': 'Acting',
+                'known_for': [{'title': 'Filme A'}, {'name': 'Serie A'}],
+            },
+            {
+                'id': 2,
+                'name': 'Diretor B',
+                'profile_path': '/diretor-b.jpg',
+                'known_for_department': 'Directing',
+                'known_for': [{'title': 'Filme B'}],
+            },
+            {
+                'id': 3,
+                'name': 'Atriz C',
+                'profile_path': None,
+                'known_for_department': 'Acting',
+                'known_for': [],
+            },
+        ]
+        request = self.factory.get('/api/search/', {'q': 'ator'})
+
+        response = views.search_actor(request)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.data,
+            [
+                {
+                    'id': 1,
+                    'name': 'Ator A',
+                    'photo': 'https://image.tmdb.org/t/p/w300/ator-a.jpg',
+                    'known_for': 'Filme A, Serie A',
+                },
+                {
+                    'id': 3,
+                    'name': 'Atriz C',
+                    'photo': None,
+                    'known_for': '',
+                },
+            ],
+        )
+        search_actor.assert_called_once_with('ator')
