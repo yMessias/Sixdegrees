@@ -82,6 +82,22 @@ docker-compose up --build
 
 Acesse `http://localhost`.
 
+## Verificações rápidas
+
+### Backend
+
+```bash
+cd backend
+python manage.py test api
+```
+
+### Frontend
+
+```bash
+cd frontend
+npm run build
+```
+
 ## Endpoints principais
 
 - `GET /api/health/` - verifica se a API está online.
